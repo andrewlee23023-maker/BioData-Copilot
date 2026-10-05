@@ -39,7 +39,7 @@ Build mode: learn
   Learner check: Open `http://localhost:5173`, click "Try Example Dataset", and see the 127 observations, 4 treatments, 3 doses, and column chips render immediately.
   Commit: `Build frontend workbench layout, upload component, and dataset summary cards`
 
-- [ ] **4. Full Interactive Loop — Question Console, Live Stepper, Plotly Charts & Results**
+- [x] **4. Full Interactive Loop — Question Console, Live Stepper, Plotly Charts & Results**
   Becomes usable: The complete end-to-end application. The user can type a question or click suggested question chips, watch the live analysis stepper update in real time, and view high-impact result cards, an interactive Plotly visualization, and the grounded scientific interpretation.
   Why now: Delivers the final screens (Screens B, C, D) and closes the entire core loop for the hackathon proof-of-concept.
   PRD ref: `prd.md > The Core Journey` (steps 3-5), `prd.md > Screen C`, `prd.md > Screen D`
