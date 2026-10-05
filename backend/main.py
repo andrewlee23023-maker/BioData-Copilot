@@ -9,8 +9,7 @@ from typing import Dict, Any, Optional
 
 from backend.tools.inspect import inspect_dataset
 from backend.tools.stats import summarize_groups, compare_groups
-from backend.tools.viz import generate_plotly_spec
-from backend.agent import plan_analysis, generate_grounded_explanation
+from backend.agent import run_agent_reasoning_loop
 
 app = FastAPI(title="BioData Copilot API", version="1.0.0")
 
@@ -94,68 +93,7 @@ def analyze_question(req: AnalyzeRequest):
         raise HTTPException(status_code=404, detail="Session expired or dataset not found. Please upload a dataset.")
     
     df = SESSION_STORE[req.session_id]
-    inspection = inspect_dataset(df)
     
-    # Step 1: AI intent planning
-    plan = plan_analysis(req.question, inspection)
-    if not plan.get("supported", True):
-        return {
-            "supported": False,
-            "reason": plan.get("reason", "This question cannot be analyzed with the current dataset."),
-            "steps": [
-                {"label": "Inspecting dataset & verifying question", "status": "done"},
-                {"label": "Unsupported question type detected", "status": "refused"}
-            ]
-        }
-        
-    # Step 2: Validate columns
-    group_col = plan.get("group_column", "treatment")
-    value_col = plan.get("value_column", "viability")
-    if group_col not in df.columns or value_col not in df.columns:
-        return {
-            "supported": False,
-            "reason": f"Required columns '{group_col}' or '{value_col}' not found in dataset.",
-            "steps": [
-                {"label": "Inspecting dataset schema", "status": "done"},
-                {"label": f"Column '{group_col}' or '{value_col}' missing", "status": "error"}
-            ]
-        }
-        
-    # Step 3: Python deterministic computation
-    test_type = plan.get("test_type", "one_way_anova")
-    ref_group = plan.get("reference_group", "Control")
-    target_group = plan.get("target_group", None)
-    
-    stats_result = compare_groups(
-        df=df,
-        group_col=group_col,
-        value_col=value_col,
-        test_type=test_type,
-        ref_group=ref_group,
-        target_group=target_group
-    )
-    
-    # Step 4: Deterministic Plotly JSON figure
-    plotly_spec = generate_plotly_spec(df, plan, stats_result)
-    
-    # Step 5: Grounded scientific interpretation
-    explanation = generate_grounded_explanation(req.question, plan, stats_result)
-    
-    steps = [
-        {"label": "Inspecting dataset & verifying schema", "status": "done"},
-        {"label": f"Identifying experimental groups ({group_col} vs {value_col})", "status": "done"},
-        {"label": f"Checking sample sizes & distributions", "status": "done"},
-        {"label": f"Running statistical test ({stats_result.get('test_name', 'Hypothesis Test')})", "status": "done"},
-        {"label": "Generating Plotly interactive visualization", "status": "done"},
-        {"label": "Synthesizing verified scientific interpretation", "status": "done"}
-    ]
-    
-    return {
-        "supported": True,
-        "question": req.question,
-        "steps": steps,
-        "plan": plan,
-        "stats": stats_result,
-        "plotly_spec": plotly_spec,
-        "interpretation": explanation
-    }
+    # Execute the reasoning-driven tool-using agent loop
+    result = run_agent_reasoning_loop(df, req.question)
+    return result

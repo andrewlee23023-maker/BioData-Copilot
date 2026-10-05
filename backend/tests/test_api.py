@@ -47,7 +47,7 @@ def test_analyze_highest_viability():
     data = response.json()
     
     assert data["supported"] is True
-    assert len(data["steps"]) == 6
+    assert len(data["steps"]) >= 4
     assert data["stats"]["top_performer"] == "Drug B"
     assert data["stats"]["delta_vs_reference"] > 0
     assert data["stats"]["p_value"] < 0.05

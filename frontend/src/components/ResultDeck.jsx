@@ -1,7 +1,7 @@
 import React from 'react';
 import Plotly from 'plotly.js-dist-min';
 import createPlotlyComponent from 'react-plotly.js/factory';
-import { Award, BarChart3, TrendingUp, Info, AlertTriangle } from 'lucide-react';
+import { Award, BarChart3, TrendingUp, Info, AlertTriangle, Cpu, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 
 const Plot = createPlotlyComponent(Plotly);
 
@@ -155,6 +155,170 @@ export default function ResultDeck({ result }) {
           <div>• Synthetic demonstration data — not real experimental results.</div>
         </div>
       </div>
+
+      {/* Agent Reasoning & State Trace Inspector */}
+      {result.agent_state && (
+        <AgentReasoningTrace agentState={result.agent_state} />
+      )}
     </section>
+  );
+}
+
+function AgentReasoningTrace({ agentState }) {
+  const [isOpen, setIsOpen] = React.useState(true);
+  const [activeTab, setActiveTab] = React.useState('trace'); // 'trace' or 'state'
+
+  const history = agentState.tool_history || [];
+
+  return (
+    <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '1rem', border: '1px solid rgba(14, 165, 233, 0.3)' }}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          cursor: 'pointer',
+          userSelect: 'none'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <Cpu size={18} color="#38bdf8" />
+          <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '0.04em' }}>
+            AGENT REASONING & STATE TRACE
+          </span>
+          <span style={{ 
+            fontSize: '0.72rem', 
+            background: 'rgba(16, 185, 129, 0.15)', 
+            color: '#10b981', 
+            padding: '0.2rem 0.6rem', 
+            borderRadius: '999px',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.3rem'
+          }}>
+            <ShieldCheck size={13} />
+            Deterministic Python Engine
+          </span>
+        </div>
+        <div style={{ color: '#94a3b8' }}>
+          {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </div>
+      </div>
+
+      {isOpen && (
+        <div style={{ marginTop: '1.25rem' }}>
+          {/* Tab Selector */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid rgba(51, 65, 85, 0.5)', paddingBottom: '0.5rem' }}>
+            <button
+              onClick={() => setActiveTab('trace')}
+              style={{
+                background: activeTab === 'trace' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+                color: activeTab === 'trace' ? '#38bdf8' : '#94a3b8',
+                border: activeTab === 'trace' ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid transparent',
+                borderRadius: '6px',
+                padding: '0.35rem 0.85rem',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Step-by-Step Reasoning ({history.length} tools)
+            </button>
+            <button
+              onClick={() => setActiveTab('state')}
+              style={{
+                background: activeTab === 'state' ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+                color: activeTab === 'state' ? '#38bdf8' : '#94a3b8',
+                border: activeTab === 'state' ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid transparent',
+                borderRadius: '6px',
+                padding: '0.35rem 0.85rem',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Explicit Agent State
+            </button>
+          </div>
+
+          {activeTab === 'trace' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {history.map((step, idx) => (
+                <div 
+                  key={idx} 
+                  style={{ 
+                    background: 'rgba(15, 23, 42, 0.6)', 
+                    border: '1px solid rgba(51, 65, 85, 0.6)', 
+                    borderRadius: '8px', 
+                    padding: '0.85rem 1rem' 
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ 
+                        fontSize: '0.72rem', 
+                        background: 'rgba(56, 189, 248, 0.2)', 
+                        color: '#38bdf8', 
+                        fontWeight: 700, 
+                        padding: '0.15rem 0.5rem', 
+                        borderRadius: '4px' 
+                      }}>
+                        STEP {step.step || idx + 1}
+                      </span>
+                      <code style={{ fontSize: '0.88rem', color: '#f1f5f9', fontWeight: 600 }}>
+                        {step.tool}
+                      </code>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>
+                      Deterministic Tool
+                    </span>
+                  </div>
+                  
+                  <div style={{ fontSize: '0.86rem', color: '#94a3b8', marginBottom: '0.5rem', lineHeight: 1.5 }}>
+                    <strong style={{ color: '#cbd5e1' }}>Why chosen:</strong> {step.reason}
+                  </div>
+
+                  <div style={{ 
+                    background: 'rgba(0, 0, 0, 0.35)', 
+                    borderRadius: '6px', 
+                    padding: '0.5rem 0.75rem', 
+                    fontFamily: 'monospace', 
+                    fontSize: '0.78rem',
+                    color: '#a5f3fc'
+                  }}>
+                    <span style={{ color: '#64748b' }}>args: </span>
+                    {JSON.stringify(step.arguments)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ 
+              background: 'rgba(15, 23, 42, 0.7)', 
+              borderRadius: '8px', 
+              padding: '1rem', 
+              fontFamily: 'monospace', 
+              fontSize: '0.8rem',
+              color: '#cbd5e1',
+              maxHeight: '340px',
+              overflowY: 'auto'
+            }}>
+              <div style={{ marginBottom: '0.6rem' }}><strong style={{ color: '#38bdf8' }}>Question:</strong> "{agentState.user_question}"</div>
+              <div style={{ marginBottom: '0.6rem' }}><strong style={{ color: '#38bdf8' }}>Remaining Info Needed:</strong> {agentState.remaining_information_needed || 'None'}</div>
+              <div style={{ marginBottom: '0.6rem' }}><strong style={{ color: '#38bdf8' }}>Completed Tools:</strong> {JSON.stringify(agentState.completed_analyses)}</div>
+              <div><strong style={{ color: '#38bdf8' }}>Observations:</strong></div>
+              <pre style={{ margin: '0.4rem 0 0 0', color: '#94a3b8', fontSize: '0.76rem', whiteSpace: 'pre-wrap' }}>
+                {JSON.stringify(agentState.observations || {}, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

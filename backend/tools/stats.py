@@ -32,6 +32,52 @@ def summarize_groups(df: pd.DataFrame, group_col: str, value_col: str) -> Dict[s
     
     return summary
 
+def check_assumptions(df: pd.DataFrame, group_col: str, value_col: str) -> Dict[str, Any]:
+    """
+    Evaluates statistical assumptions prior to inferential testing:
+    - Minimum sample size per group (n >= 3)
+    - Missingness / null values
+    - Group variances and distribution spread
+    """
+    if group_col not in df.columns or value_col not in df.columns:
+        raise ValueError(f"Columns '{group_col}' and/or '{value_col}' not found in dataset.")
+        
+    clean_df = df[[group_col, value_col]].dropna()
+    missing_count = int(df[[group_col, value_col]].isna().any(axis=1).sum())
+    
+    groups_counts = clean_df.groupby(group_col)[value_col].count().to_dict()
+    min_sample = min(groups_counts.values()) if groups_counts else 0
+    adequate_sample = bool(min_sample >= 3)
+    
+    # Variance check
+    variances = clean_df.groupby(group_col)[value_col].var().dropna().to_dict()
+    if len(variances) >= 2:
+        max_var = max(variances.values())
+        min_var = min(variances.values())
+        var_ratio = round(float(max_var / min_var), 2) if min_var > 0 else 1.0
+    else:
+        var_ratio = 1.0
+        
+    recommended_test = "one_way_anova" if len(groups_counts) > 2 else "two_sample_t_test"
+    if var_ratio > 4.0:
+        # High variance heteroscedasticity flag
+        note = "Unequal variances detected across groups; Welch's correction recommended."
+    else:
+        note = "Standard parametric assumptions met."
+        
+    return {
+        "group_column": group_col,
+        "value_column": value_col,
+        "total_observations": len(clean_df),
+        "missing_rows_excluded": missing_count,
+        "group_sample_sizes": {str(k): int(v) for k, v in groups_counts.items()},
+        "min_sample_size": int(min_sample),
+        "sample_size_adequate": adequate_sample,
+        "variance_ratio": var_ratio,
+        "recommended_test": recommended_test,
+        "scientific_note": note
+    }
+
 def compare_groups(
     df: pd.DataFrame, 
     group_col: str, 
@@ -102,6 +148,7 @@ def compare_groups(
         t_stat, p_val = stats.ttest_ind(groups_data[g1], groups_data[g2], equal_var=False)
         result.update({
             "test_name": "Welch's Two-Sample t-test",
+            "target_group": g1,
             "comparison": f"{g1} vs {g2}",
             "t_statistic": round(float(t_stat), 4),
             "p_value": round(float(p_val), 4),
@@ -114,6 +161,7 @@ def compare_groups(
         u_stat, p_val = stats.mannwhitneyu(groups_data[g1], groups_data[g2])
         result.update({
             "test_name": "Mann-Whitney U Test",
+            "target_group": g1,
             "comparison": f"{g1} vs {g2}",
             "u_statistic": round(float(u_stat), 4),
             "p_value": round(float(p_val), 4),
@@ -121,7 +169,6 @@ def compare_groups(
             "formatted_p_value": "< 0.001" if p_val < 0.001 else f"= {p_val:.3f}"
         })
     elif test_type in ["correlation", "dose_trend"]:
-        # If group_col is numeric or convertable
         if pd.api.types.is_numeric_dtype(clean_df[group_col]):
             r_val, p_val = stats.pearsonr(clean_df[group_col], clean_df[value_col])
             slope, intercept, r_value, p_value, std_err = stats.linregress(clean_df[group_col], clean_df[value_col])
@@ -134,7 +181,6 @@ def compare_groups(
                 "formatted_p_value": "< 0.001" if p_val < 0.001 else f"= {p_val:.3f}"
             })
         else:
-            # Fallback to ANOVA
             f_stat, p_val = stats.f_oneway(*groups_data.values())
             result.update({
                 "test_name": "One-way ANOVA (Trend Evaluation)",
