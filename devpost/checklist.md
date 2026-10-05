@@ -29,7 +29,7 @@ Build mode: learn
   Learner check: Send a test query to the `/api/analyze` endpoint and observe the AI plan and grounded explanation returned with exact Python-calculated numbers.
   Commit: `Add AI intent planner, grounded explainer, and analyze endpoint`
 
-- [ ] **3. Frontend Workbench — Dataset Ingestion & Summary UI**
+- [x] **3. Frontend Workbench — Dataset Ingestion & Summary UI**
   Becomes usable: A running React + Vite + Tailwind frontend (`:5173`) featuring the dark laboratory workbench aesthetic, a drag-and-drop CSV upload zone, a 1-click "Try Example Dataset" button, and instant dataset summary cards (observations, treatments, doses, columns).
   Why now: Provides the visual entry point and first screen (Screen A) of the user journey, connected live to the backend API.
   PRD ref: `prd.md > Screens and Layout`, `prd.md > 1. Dataset Upload & Inspection`
@@ -51,7 +51,7 @@ Build mode: learn
 
 ## Hands-on Checkpoints
 
-- [ ] Early usable behavior explored — Slice 2 (API-level verification of AI planner & Python computation)
+- [x] Early usable behavior explored — Slice 2 (API-level verification of AI planner & Python computation)
 - [ ] Final kick-the-tires exploration and feedback completed — Slice 4 (Full web app UI walkthrough)
 
 ## Final Review
