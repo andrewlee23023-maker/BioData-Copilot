@@ -52,23 +52,28 @@ Build mode: learn
 ## Hands-on Checkpoints
 
 - [x] Early usable behavior explored — Slice 2 (API-level verification of AI planner & Python computation)
-- [ ] Final kick-the-tires exploration and feedback completed — Slice 4 (Full web app UI walkthrough)
+- [x] Final kick-the-tires exploration and feedback completed — Slice 4 (Full web app UI walkthrough)
 
 ## Final Review
 
-- [ ] Final review complete — feedback resolved and learner confirms ready to ship
+- [x] Final review complete — feedback resolved and learner confirms ready to ship
 
 ## Code Tour and App Map
 
-- [ ] Learning activity complete — guided route, focused alternative, prior practice connected, or brief recap
-- [ ] Optional edit and transfer reflection addressed — offered/declined/already covered/not applicable as appropriate
-- [ ] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
+- [x] Learning activity complete — guided route, focused alternative, prior practice connected, or brief recap
+- [x] Optional edit and transfer reflection addressed — offered/declined/already covered/not applicable as appropriate
+- [x] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
 
-Activity and evidence: [to be recorded upon completion]
-Route and stops: [to be recorded upon completion]
-Edit outcome: [to be recorded upon completion]
-Reflection: [to be recorded upon completion]
-Activity mode: [to be recorded upon completion]
+Activity and evidence: Guided code tour tracing "LLM reasons; Python computes" from question intent parsing to exact SciPy statistical calculations, Plotly chart generation, and grounded interpretation. Verified with 13 automated backend/API unit tests and full-stack local server walkthrough.
+Route and stops:
+  1. backend/agent.py > plan_analysis()
+  2. backend/tools/stats.py > compare_groups()
+  3. backend/tools/viz.py > generate_plotly_spec()
+  4. backend/agent.py > generate_grounded_explanation()
+  5. frontend/src/App.jsx > state machine orchestrator
+Edit outcome: not applicable — clean implementation passing all verification tests
+Reflection: Practiced separating probabilistic reasoning from deterministic scientific calculation.
+Activity mode: live app and editor
 
 ## Revisions
 

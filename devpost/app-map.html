@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BioData Copilot — App Map & Learning Summary</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --accent-emerald: #10b981;
+      --accent-cyan: #06b6d4;
+      --accent-blue: #3b82f6;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg); color: var(--text-main); line-height: 1.6; padding: 2.5rem 1.5rem; max-width: 960px; margin: 0 auto; }
+    header { margin-bottom: 2.5rem; border-bottom: 1px solid var(--card-border); padding-bottom: 1.5rem; }
+    .badge { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
+    h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.03em; margin: 0.75rem 0 0.5rem; color: #fff; }
+    .tagline { font-size: 1.15rem; color: var(--text-muted); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 20px rgba(0,0,0,0.25); }
+    .card h2 { font-size: 1.15rem; font-weight: 700; margin-bottom: 0.75rem; color: #fff; display: flex; align-items: center; gap: 0.5rem; }
+
+    .stop-card { border-left: 4px solid var(--accent-emerald); padding-left: 1.25rem; margin-bottom: 1.25rem; background: rgba(15, 23, 42, 0.5); padding: 1.25rem; border-radius: 8px; border: 1px solid var(--card-border); border-left-width: 4px; border-left-color: var(--accent-emerald); }
+    .stop-card.cyan { border-left-color: var(--accent-cyan); }
+    .stop-card.blue { border-left-color: var(--accent-blue); }
+
+    .code-path { font-family: var(--font-mono); font-size: 0.85rem; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 0.15rem 0.45rem; border-radius: 4px; }
+    .takeaway-box { background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(6,182,212,0.1)); border: 1px solid rgba(16,185,129,0.3); border-radius: 12px; padding: 1.75rem; margin-bottom: 2rem; }
+
+    footer { margin-top: 3rem; text-align: center; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid var(--card-border); padding-top: 1.5rem; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="badge">● Build Complete • Verified App Map</div>
+    <h1>BioData Copilot — App Map & Code Tour</h1>
+    <p class="tagline">A visual guide to how your application transforms plain English into verifiable science.</p>
+  </header>
+
+  <div class="takeaway-box">
+    <h2 style="color: #fff; font-size: 1.25rem; margin-bottom: 0.5rem;">💡 Reusable Practice: "LLM Reasons; Python Computes"</h2>
+    <p style="color: #cbd5e1; font-size: 0.98rem; line-height: 1.7;">
+      When building AI applications for science, medicine, or mission-critical workflows, <strong>never let an LLM do math or generate statistical numbers</strong>. Instead, use the AI strictly for what it excels at: semantic understanding, mapping natural language to structured schemas, and summarizing verified data into natural language. Let deterministic code (Python, SciPy, Pandas) handle 100% of the computation.
+    </p>
+  </div>
+
+  <h2 style="font-size: 1.25rem; margin-bottom: 1rem; color: #fff;">🗺️ Key Stops in the Codebase</h2>
+
+  <div class="stop-card cyan">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+      <h3 style="color: #fff; font-size: 1.05rem;">Stop 1: Natural Language Intent Planning</h3>
+      <span class="code-path">backend/agent.py &gt; plan_analysis()</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 0.92rem;">
+      This function takes the researcher's question and dataset column metadata. It outputs a constrained JSON schema specifying the analysis (e.g. <code>one_way_anova</code>, treatment vs. viability, or dose trend). If an unsupported question is asked (like predicting survival), it refuses gracefully with a friendly explanation.
+    </p>
+  </div>
+
+  <div class="stop-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+      <h3 style="color: #fff; font-size: 1.05rem;">Stop 2: Deterministic Statistical Engine</h3>
+      <span class="code-path">backend/tools/stats.py &gt; compare_groups()</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 0.92rem;">
+      Executes exact mathematical calculations using <code>scipy.stats</code>. Computes group means, standard deviations, standard error of the mean (SEM), F-statistics, and exact $p$-values. Every single metric shown on the results screen originates directly from this function.
+    </p>
+  </div>
+
+  <div class="stop-card blue">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+      <h3 style="color: #fff; font-size: 1.05rem;">Stop 3: Interactive Plotly Visualizations</h3>
+      <span class="code-path">backend/tools/viz.py &gt; generate_plotly_spec()</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 0.92rem;">
+      Builds publication-grade Plotly chart configurations with custom color palettes, error bars, and distribution jitter points. The specifications are sent as JSON to the React frontend, where <code>react-plotly.js</code> renders them interactively.
+    </p>
+  </div>
+
+  <div class="stop-card cyan">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+      <h3 style="color: #fff; font-size: 1.05rem;">Stop 4: Grounded Scientific Interpretation</h3>
+      <span class="code-path">backend/agent.py &gt; generate_grounded_explanation()</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 0.92rem;">
+      Translates the verified Python numbers into a concise 2–3 sentence biological interpretation. It enforces strict guardrails: zero unverified numbers, mandatory non-causality disclosure, and clear labeling of synthetic demonstration data.
+    </p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>🚀 Where It Runs</h2>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem;">Both servers run locally on your system:</p>
+      <ul style="list-style: none; font-size: 0.88rem; color: #cbd5e1;">
+        <li>• <strong>Frontend:</strong> <code>http://localhost:5173</code> (React + Vite)</li>
+        <li>• <strong>Backend API:</strong> <code>http://127.0.0.1:8000</code> (FastAPI)</li>
+        <li>• <strong>Tests:</strong> <code>python -m pytest backend/tests/ -v</code> (13 passing)</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>🎬 Video Recording Ready</h2>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem;">The app is ready for a 90–120s walkthrough:</p>
+      <ul style="list-style: none; font-size: 0.88rem; color: #cbd5e1;">
+        <li>1. Upload synthetic viability assay (1 click)</li>
+        <li>2. Ask: <em>"Which treatment produced highest viability?"</em></li>
+        <li>3. Show transparent stepper progress</li>
+        <li>4. Reveal Drug B result (+4.0 pp, $p < 0.001$, box plot)</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    BioData Copilot • Built with Devpost Learn "Build With AI: Basics" Hackathon
+  </footer>
+</body>
+</html>
