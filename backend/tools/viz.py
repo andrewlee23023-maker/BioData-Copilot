@@ -9,7 +9,11 @@ def generate_plotly_spec(df: pd.DataFrame, plan: Dict[str, Any], stats_result: D
     value_col = plan.get("value_column", "viability")
     chart_type = plan.get("chart_type", "box")
     
-    clean_df = df[[group_col, value_col] + ([c for c in ["dose", "replicate", "timepoint"] if c in df.columns])].dropna()
+    cols_to_keep = [group_col, value_col]
+    for c in ["dose", "replicate", "timepoint"]:
+        if c in df.columns and c not in cols_to_keep:
+            cols_to_keep.append(c)
+    clean_df = df[cols_to_keep].dropna()
     
     # Modern scientific color palette
     palette = ["#10b981", "#06b6d4", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899"]

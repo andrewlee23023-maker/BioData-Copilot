@@ -19,7 +19,7 @@ Build mode: learn
   Learner check: Run the backend test command and see all statistical tests (ANOVA, t-test, descriptive means) calculate the exact numbers from the synthetic dataset.
   Commit: `Implement analytical backend, synthetic viability dataset, and statistical tests`
 
-- [ ] **2. AI Analysis Planning & Grounded Interpretation Pipeline**
+- [x] **2. AI Analysis Planning & Grounded Interpretation Pipeline**
   Becomes usable: The AI reasoning boundary is connected: an incoming natural-language question is translated into a validated JSON analysis plan by Gemini Flash (with offline rule fallback), the backend validates and executes the requested test, and a strictly grounded scientific explanation is generated citing only the verified Python numbers.
   Why now: Proves the complete AI/Python boundary end-to-end on the command line / API level before building the frontend interface.
   PRD ref: `prd.md > 2. Natural Language Question Processing & AI Planning`, `prd.md > 4. Grounded Scientific Interpretation`
