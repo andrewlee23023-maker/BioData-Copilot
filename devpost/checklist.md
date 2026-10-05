@@ -9,7 +9,7 @@ Build mode: learn
 
 ## Slices
 
-- [ ] **1. Synthetic Dataset & Deterministic Analytical Backend**
+- [x] **1. Synthetic Dataset & Deterministic Analytical Backend**
   Becomes usable: A runnable FastAPI backend (`:8000`) and the synthetic 127-row cell-viability assay dataset (`data/synthetic_viability.csv`). Endpoints `/api/health`, `/api/load-demo`, `/api/upload`, and core Python analytical tools (`inspect_dataset`, `summarize_groups`, `compare_groups` with ANOVA/t-test, `generate_plotly_spec`) execute deterministically with pytest verification passing.
   Why now: The kernel is "Python computes; LLM reasons". Establishing the mathematically verified computational foundation and synthetic dataset first guarantees that all subsequent AI planning and UI layers have real, verifiable data to build upon.
   PRD ref: `prd.md > 1. Dataset Upload & Inspection`, `prd.md > 3. Deterministic Statistical Computation`
