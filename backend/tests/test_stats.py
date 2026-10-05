@@ -30,12 +30,26 @@ def test_summarize_groups(demo_df):
     assert summary["Control"]["n"] > 0
     assert summary["Drug B"]["std"] > 0
 
+def test_check_assumptions(demo_df):
+    from backend.tools.stats import check_assumptions
+    assumptions = check_assumptions(demo_df, "treatment", "viability")
+    assert assumptions["sample_size_adequate"] is True
+    assert assumptions["sample_size_status"] == "Adequate"
+    assert assumptions["normality_status"] == "Not assessed"
+    assert "variance_status" in assumptions
+    assert assumptions["scientific_summary"] == "Sample size and variance checks completed."
+
 def test_compare_groups_anova(demo_df):
     res = compare_groups(demo_df, "treatment", "viability", test_type="one_way_anova", ref_group="Control")
     assert res["test_name"] == "One-way ANOVA"
     assert res["top_performer"] == "Drug B"
     assert res["p_value"] < 0.05
     assert res["delta_vs_reference"] > 0
+    assert res["posthoc_performed"] is True
+    assert res["posthoc_test"] == "Tukey HSD (Family-Wise Error Rate Controlled)"
+    assert len(res["pairwise_comparisons"]) == 6
+    assert "top_vs_reference_posthoc" in res
+    assert res["top_vs_reference_posthoc"]["comparison"] == "Drug B vs Control"
     assert "causality_disclaimer" in res["guardrails"]
     assert "synthetic_disclaimer" in res["guardrails"]
 

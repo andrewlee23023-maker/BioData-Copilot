@@ -64,16 +64,7 @@ export default function App() {
     setIsAnalyzing(true);
     setError(null);
     setAnalysisResult(null);
-
-    // Initial progressive stepper states
-    setAnalysisSteps([
-      { label: "Inspecting dataset & verifying schema", status: "done" },
-      { label: "Identifying experimental groups", status: "active" },
-      { label: "Checking sample sizes & distributions", status: "pending" },
-      { label: "Running statistical hypothesis testing", status: "pending" },
-      { label: "Generating Plotly interactive visualization", status: "pending" },
-      { label: "Synthesizing verified scientific interpretation", status: "pending" }
-    ]);
+    setAnalysisSteps([]);
 
     try {
       const response = await fetch('/api/analyze', {

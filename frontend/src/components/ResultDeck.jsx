@@ -151,24 +151,30 @@ export default function ResultDeck({ result }) {
           fontSize: '0.8rem',
           color: 'var(--text-muted)'
         }}>
+          {stats?.top_vs_reference_posthoc && (
+            <div style={{ color: stats.top_vs_reference_posthoc.is_significant ? '#34d399' : '#fbbf24', fontWeight: 500 }}>
+              • Post-hoc contrast ({stats.top_vs_reference_posthoc.comparison}): difference = {stats.top_vs_reference_posthoc.difference} pp, Tukey HSD p_adj {stats.top_vs_reference_posthoc.formatted_p_adj} ({stats.top_vs_reference_posthoc.is_significant ? 'Statistically significant' : 'Not statistically significant after family-wise adjustment'}).
+            </div>
+          )}
           <div>• This describes the observed experiment and does not establish causality.</div>
           <div>• Synthetic demonstration data — not real experimental results.</div>
         </div>
       </div>
 
-      {/* Agent Reasoning & State Trace Inspector */}
+      {/* Analysis Trace & Agent State Inspector */}
       {result.agent_state && (
-        <AgentReasoningTrace agentState={result.agent_state} />
+        <AnalysisTrace agentState={result.agent_state} />
       )}
     </section>
   );
 }
 
-function AgentReasoningTrace({ agentState }) {
+function AnalysisTrace({ agentState }) {
   const [isOpen, setIsOpen] = React.useState(true);
   const [activeTab, setActiveTab] = React.useState('trace'); // 'trace' or 'state'
 
   const history = agentState.tool_history || [];
+  const planner = agentState.planner || "Deterministic State Machine (Local Fallback)";
 
   return (
     <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '1rem', border: '1px solid rgba(14, 165, 233, 0.3)' }}>
@@ -182,10 +188,21 @@ function AgentReasoningTrace({ agentState }) {
           userSelect: 'none'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
           <Cpu size={18} color="#38bdf8" />
           <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '0.04em' }}>
-            AGENT REASONING & STATE TRACE
+            ANALYSIS TRACE & AGENT STATE
+          </span>
+          <span style={{ 
+            fontSize: '0.72rem', 
+            background: 'rgba(56, 189, 248, 0.15)', 
+            color: '#38bdf8', 
+            padding: '0.2rem 0.6rem', 
+            borderRadius: '999px',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            fontWeight: 600
+          }}>
+            Planner: {planner}
           </span>
           <span style={{ 
             fontSize: '0.72rem', 
@@ -226,7 +243,7 @@ function AgentReasoningTrace({ agentState }) {
                 transition: 'all 0.15s ease'
               }}
             >
-              Step-by-Step Reasoning ({history.length} tools)
+              Tool Decisions ({history.length} tools)
             </button>
             <button
               onClick={() => setActiveTab('state')}
@@ -258,7 +275,7 @@ function AgentReasoningTrace({ agentState }) {
                     padding: '0.85rem 1rem' 
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span style={{ 
                         fontSize: '0.72rem', 
@@ -279,8 +296,8 @@ function AgentReasoningTrace({ agentState }) {
                     </span>
                   </div>
                   
-                  <div style={{ fontSize: '0.86rem', color: '#94a3b8', marginBottom: '0.5rem', lineHeight: 1.5 }}>
-                    <strong style={{ color: '#cbd5e1' }}>Why chosen:</strong> {step.reason}
+                  <div style={{ fontSize: '0.86rem', color: '#cbd5e1', marginBottom: '0.5rem', lineHeight: 1.5 }}>
+                    <strong style={{ color: '#38bdf8' }}>Why: </strong> {step.reason}
                   </div>
 
                   <div style={{ 
@@ -289,11 +306,27 @@ function AgentReasoningTrace({ agentState }) {
                     padding: '0.5rem 0.75rem', 
                     fontFamily: 'monospace', 
                     fontSize: '0.78rem',
-                    color: '#a5f3fc'
+                    color: '#a5f3fc',
+                    marginBottom: '0.4rem'
                   }}>
-                    <span style={{ color: '#64748b' }}>args: </span>
+                    <span style={{ color: '#94a3b8' }}>arguments: </span>
                     {JSON.stringify(step.arguments)}
                   </div>
+
+                  {step.output_summary && (
+                    <div style={{ 
+                      background: 'rgba(15, 23, 42, 0.85)', 
+                      borderRadius: '6px', 
+                      padding: '0.5rem 0.75rem', 
+                      fontFamily: 'monospace', 
+                      fontSize: '0.76rem',
+                      color: '#94a3b8',
+                      overflowX: 'auto'
+                    }}>
+                      <span style={{ color: '#10b981', fontWeight: 600 }}>result: </span>
+                      {JSON.stringify(step.output_summary)}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -309,6 +342,7 @@ function AgentReasoningTrace({ agentState }) {
               overflowY: 'auto'
             }}>
               <div style={{ marginBottom: '0.6rem' }}><strong style={{ color: '#38bdf8' }}>Question:</strong> "{agentState.user_question}"</div>
+              <div style={{ marginBottom: '0.6rem' }}><strong style={{ color: '#38bdf8' }}>Active Planner:</strong> {planner}</div>
               <div style={{ marginBottom: '0.6rem' }}><strong style={{ color: '#38bdf8' }}>Remaining Info Needed:</strong> {agentState.remaining_information_needed || 'None'}</div>
               <div style={{ marginBottom: '0.6rem' }}><strong style={{ color: '#38bdf8' }}>Completed Tools:</strong> {JSON.stringify(agentState.completed_analyses)}</div>
               <div><strong style={{ color: '#38bdf8' }}>Observations:</strong></div>

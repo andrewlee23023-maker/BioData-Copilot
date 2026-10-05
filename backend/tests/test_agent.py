@@ -55,3 +55,11 @@ def test_agent_unsupported_question_refusal(df):
     result = run_agent_reasoning_loop(df, question)
     assert result["supported"] is False
     assert "currently supports descriptive analyses" in result["reason"]
+
+def test_filter_dataset_tool(df):
+    from backend.agent import execute_tool
+    res = execute_tool("filter_dataset", {"filters": {"treatment": ["Drug B", "Control"]}}, df)
+    assert res["filtered_rows"] == 19 + 34
+    assert res["original_rows"] == 127
+    assert set(res["remaining_groups"]["treatment"]) == {"Drug B", "Control"}
+

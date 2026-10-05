@@ -9,8 +9,9 @@ export default function QuestionConsole({
   hasDataset 
 }) {
   const exampleQuestions = [
+    "Which treatment has the highest mean viability?",
     "Which treatment produced the highest cell viability compared with control?",
-    "Is Drug B significantly different from Control?",
+    "Is Drug A significantly different from Control?",
     "How does viability change with dose?",
     "Can you predict patient survival from this dataset?"
   ];

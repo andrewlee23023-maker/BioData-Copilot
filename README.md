@@ -32,14 +32,15 @@ AI Synthesizes Grounded Scientific Interpretation (Zero Hallucinated Metrics)
 - **Frontend:** React 18, Vite, Tailwind CSS, Lucide Icons, Plotly.js (`react-plotly.js`).
 - **Backend API:** Python 3.10+, FastAPI, Uvicorn, Pydantic.
 - **Computation Engine:** Pandas, NumPy, SciPy (`scipy.stats` for ANOVA, Welch's t-test, Mann-Whitney U, Pearson correlation).
-- **AI Agent:** Google Gemini API (`gemini-2.5-flash`), with an automated deterministic rule-based fallback ensuring 100% offline grading and demo reliability.
+- **AI Agent:** Google Gemini API (`gemini-3.5-flash-lite`) with native Structured Outputs (`responseSchema`), paired with a deterministic rule-based fallback ensuring 100% offline grading and demo reliability.
 - **Zero Database:** Lightweight, session-based in-memory processing.
+- **Open Source:** MIT License.
 
 ## 5. The AI / Computation Boundary (Core Scientific Principle)
 | Layer | Responsibility | What It NEVER Does |
 |---|---|---|
 | **AI (Gemini Flash)** | Intent parsing, mapping questions to columns, selecting test type, formulating natural language interpretation. | **Never computes, estimates, or invents numbers or p-values.** |
-| **Python (SciPy / Pandas)** | Data filtering, sample size ($n$) checks, group means, standard deviations, exact $p$-values, effect sizes, Plotly chart generation. | Never hallucinates; 100% mathematically deterministic. |
+| **Python (SciPy / Pandas)** | Data filtering, sample size ($n$) checks, group means, standard deviations, exact $p$-values, Tukey HSD post-hoc contrasts, Plotly chart generation. | Never hallucinates; 100% mathematically deterministic. |
 
 Every numerical claim in the UI is traced directly to the backend Python computation output.
 
@@ -51,8 +52,8 @@ Every numerical claim in the UI is traced directly to the backend Python computa
 
 ### Step 1: Clone and Configure Environment
 ```bash
-git clone https://github.com/your-username/biodata-copilot.git
-cd biodata-copilot
+git clone https://github.com/andrewlee23023-maker/BioData-Copilot.git
+cd BioData-Copilot
 
 # (Optional) Set your Gemini API key in .env
 cp .env.example .env
@@ -86,13 +87,14 @@ Open your browser at **`http://localhost:5173`**.
 ## 7. Using the Synthetic Demo Dataset
 A pre-packaged cell-viability assay is included in [`data/synthetic_viability.csv`](data/synthetic_viability.csv):
 - **127 observations**, 4 treatments (`Control`, `Drug A`, `Drug B`, `Drug C`), 3 doses (`10`, `50`, `100` µM), 3 replicates across timepoints.
-- Click **"Try Example Dataset"** in the app to mount it instantly.
+- Click **"Load Synthetic Demo (127 rows)"** in the app to mount it instantly.
 
 ### Supported Example Questions:
-1. *"Which treatment produced the highest cell viability compared with control?"* → Selects One-way ANOVA, identifies Drug B (+3.6 pp, $p < 0.05$), and renders a publication-grade box plot.
-2. *"Is Drug B significantly different from Control?"* → Selects Welch's Two-Sample t-test / Mann-Whitney U and plots mean comparison with error bars.
-3. *"How does viability change with dose?"* → Identifies dose concentration and renders a dose-response scatter/trend plot with Pearson correlation.
-4. *"Can you predict patient survival from this dataset?"* → Refuses gracefully with a clear message explaining supported comparative modes.
+1. *"Which treatment has the highest mean viability?"* → Descriptively identifies Drug B (mean 95.09%) as the top performer.
+2. *"Which treatment produced the highest cell viability compared with control?"* → Executes One-way ANOVA ($F = 95.9, p < 0.001$) and post-hoc Tukey HSD pairwise testing ($p_{\text{adj}} = 0.483$), accurately reporting that while overall treatment variation is significant (driven by Drug A and C), the specific Drug B vs Control contrast does not reach significance after family-wise correction.
+3. *"Is Drug A significantly different from Control?"* → Executes Welch's Two-Sample t-test ($p < 0.001$, $-29.16$ pp difference).
+4. *"How does viability change with dose?"* → Identifies dose concentration and renders a dose-response scatter/trend plot with Pearson correlation ($r = -0.584, p < 0.001$).
+5. *"Can you predict patient survival from this dataset?"* → Refuses gracefully with a clear message explaining supported comparative modes.
 
 ---
 

@@ -13,6 +13,16 @@ def inspect_dataset(df: pd.DataFrame) -> Dict[str, Any]:
     
     missing_values = {c: int(df[c].isna().sum()) for c in columns if df[c].isna().sum() > 0}
     
+    # General column role inference
+    candidate_grouping = []
+    candidate_measurement = []
+    for c in columns:
+        n_unique = int(df[c].nunique())
+        if 2 <= n_unique <= 30:
+            candidate_grouping.append(c)
+        if c in numeric_cols and n_unique > 5:
+            candidate_measurement.append(c)
+
     # Detect experimental design features (3 treatment doses excluding 0/vehicle control)
     if "dose" in df.columns:
         active_doses = df[df["dose"] > 0]["dose"].nunique()
@@ -29,6 +39,8 @@ def inspect_dataset(df: pd.DataFrame) -> Dict[str, Any]:
         "columns": columns,
         "numeric_columns": numeric_cols,
         "categorical_columns": categorical_cols,
+        "candidate_grouping_columns": candidate_grouping,
+        "candidate_measurement_columns": candidate_measurement,
         "missing_values": missing_values,
         "summary": {
             "observations": rows,
