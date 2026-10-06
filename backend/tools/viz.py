@@ -63,7 +63,8 @@ def generate_plotly_spec(df: pd.DataFrame, plan: Dict[str, Any], stats_result: D
         x_title = f"{group_col.capitalize()} (Concentration)"
     
     elif chart_type == "bar":
-        summary = stats_result.get("group_summary", {})
+        raw_summary = stats_result.get("group_summary", {})
+        summary = {k: v for k, v in raw_summary.items() if isinstance(v, dict) and "mean" in v}
         x_vals = list(summary.keys())
         y_vals = [s["mean"] for s in summary.values()]
         errors = [s["sem"] for s in summary.values()]

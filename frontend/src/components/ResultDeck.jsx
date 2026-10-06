@@ -27,9 +27,10 @@ export default function ResultDeck({ result }) {
   }
 
   const { stats, plotly_spec, interpretation } = result;
-  const isANOVA = stats?.test_name?.includes("ANOVA");
-  const isTTest = stats?.test_name?.includes("t-test") || stats?.test_name?.includes("Mann-Whitney");
-  const isTrend = stats?.test_name?.includes("Correlation") || stats?.test_name?.includes("Trend");
+  const compType = stats?.comparison_type;
+  const isPairwise = compType === "pairwise" || stats?.test_name?.includes("t-test") || stats?.test_name?.includes("Mann-Whitney");
+  const isDescriptive = compType === "descriptive";
+  const isTrend = compType === "dose_trend" || stats?.test_name?.includes("Correlation") || stats?.test_name?.includes("Trend");
 
   return (
     <section className="animate-fade-in" style={{ marginBottom: '2.5rem' }}>
@@ -45,10 +46,12 @@ export default function ResultDeck({ result }) {
         <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem', color: '#fff' }}>
           {isTrend ? (
             <>Dose Concentration Trend for <span style={{ color: '#38bdf8' }}>{stats.value_column}</span></>
-          ) : isTTest ? (
-            <><span style={{ color: '#10b981' }}>{stats.top_performer}</span> pairwise comparison with {stats.reference_group}</>
+          ) : isPairwise ? (
+            <><span style={{ color: '#10b981' }}>{stats.target_group || stats.top_performer}</span> vs {stats.reference_group}</>
+          ) : isDescriptive ? (
+            <>Descriptive Summary: <span style={{ color: '#10b981' }}>{stats.top_performer}</span> highest mean {stats.value_column}</>
           ) : (
-            <><span style={{ color: '#10b981' }}>{stats.top_performer}</span> produced the highest mean {stats.value_column}.</>
+            <><span style={{ color: '#10b981' }}>{stats.top_performer}</span> produced highest mean {stats.value_column}</>
           )}
         </h2>
 
@@ -69,6 +72,80 @@ export default function ResultDeck({ result }) {
                   {stats.slope ?? '-'}
                 </div>
               </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Analysis</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc', marginTop: '0.4rem' }}>
+                  {stats.test_name || "Dose Trend"}
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Significance (p-value)</div>
+                <div className="num-tabular" style={{ fontSize: '1.8rem', fontWeight: 800, color: stats.is_significant ? '#10b981' : '#f59e0b', marginTop: '0.2rem' }}>
+                  p {stats.formatted_p_value}
+                </div>
+              </div>
+            </>
+          ) : isPairwise ? (
+            <>
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Mean Difference</div>
+                <div className="num-tabular" style={{ fontSize: '1.8rem', fontWeight: 800, color: (stats.difference_pp ?? stats.delta_vs_reference) >= 0 ? '#10b981' : '#f43f5e', marginTop: '0.2rem' }}>
+                  {(stats.difference_pp ?? stats.delta_vs_reference) >= 0 ? `+${stats.difference_pp ?? stats.delta_vs_reference}` : (stats.difference_pp ?? stats.delta_vs_reference)} pp
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{stats.target_group || stats.top_performer} vs {stats.reference_group}</div>
+                <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 700, color: '#f8fafc', marginTop: '0.35rem' }}>
+                  {stats.target_mean ?? stats.top_mean}% vs {stats.reference_mean ?? stats.group_summary?.[stats.reference_group]?.mean}%
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Statistical Test</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc', marginTop: '0.4rem' }}>
+                  {stats.test || stats.test_name}
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Significance (p-value)</div>
+                <div className="num-tabular" style={{ fontSize: '1.8rem', fontWeight: 800, color: (stats.significant ?? stats.is_significant) ? '#10b981' : '#f59e0b', marginTop: '0.2rem' }}>
+                  p {stats.formatted_p_value}
+                </div>
+              </div>
+            </>
+          ) : isDescriptive ? (
+            <>
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Top Performer</div>
+                <div className="num-tabular" style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981', marginTop: '0.2rem' }}>
+                  {stats.top_performer}
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Highest Mean Viability</div>
+                <div className="num-tabular" style={{ fontSize: '1.8rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.2rem' }}>
+                  {stats.top_mean}%
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Analysis Type</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc', marginTop: '0.4rem' }}>
+                  Descriptive Summary
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Groups Evaluated</div>
+                <div className="num-tabular" style={{ fontSize: '1.8rem', fontWeight: 800, color: '#10b981', marginTop: '0.2rem' }}>
+                  {Object.keys(stats.group_summary || {}).length} groups
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -85,22 +162,22 @@ export default function ResultDeck({ result }) {
                   {stats.delta_vs_reference >= 0 ? `+${stats.delta_vs_reference}` : stats.delta_vs_reference} pp
                 </div>
               </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Statistical Test</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc', marginTop: '0.4rem' }}>
+                  {stats.test_name}
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Significance (p-value)</div>
+                <div className="num-tabular" style={{ fontSize: '1.8rem', fontWeight: 800, color: stats.is_significant ? '#10b981' : '#f59e0b', marginTop: '0.2rem' }}>
+                  p {stats.formatted_p_value}
+                </div>
+              </div>
             </>
           )}
-
-          <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Statistical Test</div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc', marginTop: '0.4rem' }}>
-              {stats.test_name}
-            </div>
-          </div>
-
-          <div style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Significance (p-value)</div>
-            <div className="num-tabular" style={{ fontSize: '1.8rem', fontWeight: 800, color: stats.is_significant ? '#10b981' : '#f59e0b', marginTop: '0.2rem' }}>
-              p {stats.formatted_p_value}
-            </div>
-          </div>
         </div>
       </div>
 

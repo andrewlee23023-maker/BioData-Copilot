@@ -64,6 +64,8 @@ def check_assumptions(df: pd.DataFrame, group_col: str, value_col: str) -> Dict[
     sample_size_status = "Adequate" if adequate_sample else f"Inadequate (min n = {min_sample} < 3)"
     variance_status = "No large variance imbalance detected" if var_ratio <= 3.0 else f"Variance imbalance detected (ratio: {var_ratio}x)"
     normality_status = "Not assessed"
+    
+    note = "No large variance imbalance detected; normality was not formally assessed." if var_ratio <= 3.0 else f"Variance imbalance detected (ratio: {var_ratio}x); normality was not formally assessed."
         
     return {
         "group_column": group_col,
@@ -80,7 +82,7 @@ def check_assumptions(df: pd.DataFrame, group_col: str, value_col: str) -> Dict[
         "normality_status": normality_status,
         "recommended_test": recommended_test,
         "scientific_summary": "Sample size and variance checks completed.",
-        "scientific_note": "Sample size and variance checks completed. Normality not assessed."
+        "scientific_note": note
     }
 
 def compare_groups(
@@ -112,8 +114,8 @@ def compare_groups(
         
     summary = summarize_groups(df, group_col, value_col)
     
-    # Identify top performer
-    top_group = max(summary.items(), key=lambda x: x[1]["mean"])
+    group_items = {k: v for k, v in summary.items() if isinstance(v, dict) and "mean" in v}
+    top_group = max(group_items.items(), key=lambda x: x[1]["mean"])
     top_group_name = top_group[0]
     top_group_mean = top_group[1]["mean"]
     
@@ -143,6 +145,7 @@ def compare_groups(
         f_stat, p_val = stats.f_oneway(*groups_data.values())
         result.update({
             "test_name": "One-way ANOVA",
+            "comparison_type": "multi_group_anova",
             "f_statistic": round(float(f_stat), 4),
             "p_value": round(float(p_val), 4),
             "is_significant": bool(p_val < 0.05),
@@ -193,12 +196,23 @@ def compare_groups(
         g1 = target_group if target_group in groups_data else (top_group_name if top_group_name != effective_ref else group_names[1])
         g2 = effective_ref
         t_stat, p_val = stats.ttest_ind(groups_data[g1], groups_data[g2], equal_var=False)
+        target_m = summary[g1]["mean"]
+        ref_m = summary[g2]["mean"]
+        diff_pp = round(target_m - ref_m, 2)
         result.update({
             "test_name": "Welch's Two-Sample t-test",
+            "test": "Welch's t-test",
+            "comparison_type": "pairwise",
             "target_group": g1,
+            "reference_group": g2,
+            "target_mean": target_m,
+            "reference_mean": ref_m,
+            "difference_pp": diff_pp,
+            "delta_vs_reference": diff_pp,
             "comparison": f"{g1} vs {g2}",
             "t_statistic": round(float(t_stat), 4),
             "p_value": round(float(p_val), 4),
+            "significant": bool(p_val < 0.05),
             "is_significant": bool(p_val < 0.05),
             "formatted_p_value": "< 0.001" if p_val < 0.001 else f"= {p_val:.3f}"
         })
@@ -206,16 +220,26 @@ def compare_groups(
         g1 = target_group if target_group in groups_data else (top_group_name if top_group_name != effective_ref else group_names[1])
         g2 = effective_ref
         u_stat, p_val = stats.mannwhitneyu(groups_data[g1], groups_data[g2])
+        target_m = summary[g1]["mean"]
+        ref_m = summary[g2]["mean"]
+        diff_pp = round(target_m - ref_m, 2)
         result.update({
             "test_name": "Mann-Whitney U Test",
+            "test": "Mann-Whitney U Test",
+            "comparison_type": "pairwise",
             "target_group": g1,
-            "comparison": f"{g1} vs {g2}",
+            "reference_group": g2,
+            "target_mean": target_m,
+            "reference_mean": ref_m,
+            "difference_pp": diff_pp,
             "u_statistic": round(float(u_stat), 4),
             "p_value": round(float(p_val), 4),
+            "significant": bool(p_val < 0.05),
             "is_significant": bool(p_val < 0.05),
             "formatted_p_value": "< 0.001" if p_val < 0.001 else f"= {p_val:.3f}"
         })
     elif test_type in ["correlation", "dose_trend"]:
+        result["comparison_type"] = "dose_trend"
         if pd.api.types.is_numeric_dtype(clean_df[group_col]):
             r_val, p_val = stats.pearsonr(clean_df[group_col], clean_df[value_col])
             slope, intercept, r_value, p_value, std_err = stats.linregress(clean_df[group_col], clean_df[value_col])

@@ -38,7 +38,7 @@ export default function AnalysisActivity({ steps, isAnalyzing }) {
     <section className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
       <h3 style={{ fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#f8fafc' }}>
         <Activity size={18} color="#06b6d4" />
-        <span>ANALYSIS ACTIVITY</span>
+        <span>ANALYSIS TRACE</span>
       </h3>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>

@@ -135,7 +135,26 @@ def execute_tool(
     elif tool_name == "summarize_groups":
         grp = arguments.get("group_column", "treatment")
         val = arguments.get("value_column", "viability")
-        return summarize_groups(df, grp, val)
+        raw_summary = summarize_groups(df, grp, val)
+        top_group = max(raw_summary.items(), key=lambda x: x[1]["mean"])
+        ref_group = "Control" if "Control" in raw_summary else (list(raw_summary.keys())[0] if raw_summary else "")
+        ref_mean = raw_summary.get(ref_group, {}).get("mean", 0.0) if ref_group else 0.0
+        delta = round(top_group[1]["mean"] - ref_mean, 2)
+        return {
+            "comparison_type": "descriptive",
+            "test_name": "Descriptive Group Summary",
+            "group_column": grp,
+            "value_column": val,
+            "top_performer": top_group[0],
+            "top_mean": top_group[1]["mean"],
+            "reference_group": ref_group,
+            "delta_vs_reference": delta,
+            "group_summary": raw_summary,
+            "guardrails": {
+                "causality_disclaimer": "This describes the observed experiment and does not establish causality.",
+                "synthetic_disclaimer": "Synthetic demonstration data — not real experimental results."
+            }
+        }
         
     elif tool_name == "compare_groups":
         grp = arguments.get("group_column", "treatment")
@@ -157,6 +176,7 @@ def execute_tool(
 
 # ---------------------------------------------------------------------------
 # Reasoning-Driven Orchestrator
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 def decide_next_action(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
     """
@@ -222,27 +242,231 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
         
     num_cols = metadata.get("numeric_columns", ["viability"])
     cat_cols = metadata.get("categorical_columns", ["treatment"])
+    treatments = metadata.get("summary", {}).get("treatments", ["Control", "Drug A", "Drug B", "Drug C"])
     
-    # Variable selection logic
-    if "dose" in q_lower or "concentration" in q_lower or "trend" in q_lower or "change with dose" in q_lower:
+    # Check if a specific treatment was targeted
+    target_drug = None
+    for d in treatments:
+        if d.lower() in q_lower and d.lower() != "control":
+            target_drug = d
+            break
+
+    # Determine Question Type
+    is_dose_query = any(kw in q_lower for kw in ["dose", "concentration", "trend", "change with dose"])
+    is_descriptive = any(kw in q_lower for kw in [
+        "highest mean", "highest viability", "which treatment has the highest",
+        "highest average", "which treatment produced the highest", "summarize",
+        "what is the average", "summary of"
+    ]) and not any(kw in q_lower for kw in ["significantly different", "vs control", "compared with control", "compared to control", "t-test", "anova", "hypothesis"])
+    is_pairwise = (
+        any(kw in q_lower for kw in ["is drug", "significantly different", "vs control", "different from control"])
+        or (target_drug is not None and not is_descriptive and not is_dose_query)
+    )
+
+    # -------------------------------------------------------------------------
+    # Workflow A: Filtered Dose Question (e.g. "How does Drug B respond to dose?")
+    # -------------------------------------------------------------------------
+    if is_dose_query and target_drug:
+        val_col = "viability" if "viability" in num_cols else num_cols[0]
+        grp_col = "dose" if "dose" in num_cols else (cat_cols[0] if cat_cols else "dose")
+        
+        if "filter_dataset" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "filter_dataset",
+                    "arguments": {"filters": {"treatment": [target_drug]}}
+                },
+                "reason": f"The question concerns {target_drug} specifically; restrict dataset to {target_drug} prior to dose response analysis.",
+                "supported": True
+            }
+        if "compare_groups" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "compare_groups",
+                    "arguments": {
+                        "group_column": grp_col,
+                        "value_column": val_col,
+                        "test_type": "dose_trend"
+                    }
+                },
+                "reason": f"Evaluate dose-response correlation and linear trend on filtered {target_drug} subset.",
+                "supported": True
+            }
+        if "create_visualization" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "create_visualization",
+                    "arguments": {
+                        "group_column": grp_col,
+                        "value_column": val_col,
+                        "chart_type": "scatter"
+                    }
+                },
+                "reason": f"Generate publication-grade scatter plot with trendline showing {target_drug} dose response.",
+                "supported": True
+            }
+        return {
+            "status": "complete",
+            "next_action": None,
+            "reason": "Sufficient evidence collected. All numerical claims verified from deterministic Python tools.",
+            "supported": True
+        }
+
+    # -------------------------------------------------------------------------
+    # Workflow B: General Dose Question (e.g. "How does viability change with dose?")
+    # -------------------------------------------------------------------------
+    if is_dose_query:
         val_col = "viability" if "viability" in num_cols else num_cols[0]
         grp_col = "dose" if "dose" in num_cols else (cat_cols[0] if cat_cols else "treatment")
-        test_type = "dose_trend"
-        chart_type = "scatter"
-    else:
-        val_col = "viability" if "viability" in num_cols else (num_cols[0] if num_cols else "value")
-        grp_col = "treatment" if "treatment" in cat_cols else (cat_cols[0] if cat_cols else "group")
         
-        treatments = metadata.get("summary", {}).get("treatments", ["Control", "Drug A", "Drug B", "Drug C"])
-        target_drug = None
-        for d in treatments:
-            if d.lower() in q_lower and d.lower() != "control":
-                target_drug = d
-                break
-        test_type = "two_sample_t_test" if target_drug else "one_way_anova"
-        chart_type = "bar" if target_drug else "box"
+        if "check_assumptions" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "check_assumptions",
+                    "arguments": {"group_column": grp_col, "value_column": val_col}
+                },
+                "reason": f"Verify sample sizes and variance characteristics across dose levels.",
+                "supported": True
+            }
+        if "compare_groups" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "compare_groups",
+                    "arguments": {
+                        "group_column": grp_col,
+                        "value_column": val_col,
+                        "test_type": "dose_trend"
+                    }
+                },
+                "reason": f"Calculate Pearson correlation and linear regression slope across dose concentrations.",
+                "supported": True
+            }
+        if "create_visualization" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "create_visualization",
+                    "arguments": {
+                        "group_column": grp_col,
+                        "value_column": val_col,
+                        "chart_type": "scatter"
+                    }
+                },
+                "reason": "Generate publication-grade scatter plot showing viability vs dose concentration.",
+                "supported": True
+            }
+        return {
+            "status": "complete",
+            "next_action": None,
+            "reason": "Sufficient evidence collected. All numerical claims verified from deterministic Python tools.",
+            "supported": True
+        }
 
-    # Step 2: Check assumptions
+    # -------------------------------------------------------------------------
+    # Workflow C: Descriptive Question (e.g. "Which treatment has the highest mean viability?")
+    # (NO unnecessary hypothesis test!)
+    # -------------------------------------------------------------------------
+    if is_descriptive:
+        val_col = "viability" if "viability" in num_cols else num_cols[0]
+        grp_col = "treatment" if "treatment" in cat_cols else cat_cols[0]
+        
+        if "summarize_groups" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "summarize_groups",
+                    "arguments": {"group_column": grp_col, "value_column": val_col}
+                },
+                "reason": f"Compute descriptive summary statistics (mean, SEM, SD, min, max, n) across {grp_col} groups.",
+                "supported": True
+            }
+        if "create_visualization" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "create_visualization",
+                    "arguments": {
+                        "group_column": grp_col,
+                        "value_column": val_col,
+                        "chart_type": "bar"
+                    }
+                },
+                "reason": f"Generate bar chart displaying group means with SEM error bars.",
+                "supported": True
+            }
+        return {
+            "status": "complete",
+            "next_action": None,
+            "reason": "Sufficient descriptive evidence collected. No hypothesis test needed.",
+            "supported": True
+        }
+
+    # -------------------------------------------------------------------------
+    # Workflow D: Pairwise Inferential Question (e.g. "Is Drug B significantly different from Control?")
+    # -------------------------------------------------------------------------
+    if is_pairwise:
+        val_col = "viability" if "viability" in num_cols else num_cols[0]
+        grp_col = "treatment" if "treatment" in cat_cols else cat_cols[0]
+        eff_target = target_drug if target_drug else "Drug B"
+        
+        if "check_assumptions" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "check_assumptions",
+                    "arguments": {"group_column": grp_col, "value_column": val_col}
+                },
+                "reason": f"Verify sample sizes, variance characteristics, and data adequacy for '{eff_target}' vs 'Control'.",
+                "supported": True
+            }
+        if "compare_groups" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "compare_groups",
+                    "arguments": {
+                        "group_column": grp_col,
+                        "value_column": val_col,
+                        "test_type": "two_sample_t_test",
+                        "ref_group": "Control",
+                        "target_group": eff_target
+                    }
+                },
+                "reason": f"Perform Welch's two-sample t-test comparing {eff_target} specifically against Control.",
+                "supported": True
+            }
+        if "create_visualization" not in completed:
+            return {
+                "status": "continue",
+                "next_action": {
+                    "tool": "create_visualization",
+                    "arguments": {
+                        "group_column": grp_col,
+                        "value_column": val_col,
+                        "chart_type": "bar"
+                    }
+                },
+                "reason": f"Generate bar plot comparing {eff_target} against Control with error bars.",
+                "supported": True
+            }
+        return {
+            "status": "complete",
+            "next_action": None,
+            "reason": "Sufficient evidence collected. All numerical claims verified from deterministic Python tools.",
+            "supported": True
+        }
+
+    # -------------------------------------------------------------------------
+    # Workflow E: Multi-Group Inferential Question (e.g. One-way ANOVA)
+    # -------------------------------------------------------------------------
+    val_col = "viability" if "viability" in num_cols else num_cols[0]
+    grp_col = "treatment" if "treatment" in cat_cols else cat_cols[0]
+    
     if "check_assumptions" not in completed:
         return {
             "status": "continue",
@@ -250,11 +474,9 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
                 "tool": "check_assumptions",
                 "arguments": {"group_column": grp_col, "value_column": val_col}
             },
-            "reason": f"Verify sample sizes, variance characteristics, and assess data adequacy for '{grp_col}' vs '{val_col}'.",
+            "reason": f"Verify sample sizes, variance spread, and check assumptions across all {grp_col} groups.",
             "supported": True
         }
-
-    # Step 3: Run hypothesis comparison
     if "compare_groups" not in completed:
         return {
             "status": "continue",
@@ -263,16 +485,13 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
                 "arguments": {
                     "group_column": grp_col,
                     "value_column": val_col,
-                    "test_type": test_type,
-                    "ref_group": "Control",
-                    "target_group": target_drug if 'target_drug' in locals() else None
+                    "test_type": "one_way_anova",
+                    "ref_group": "Control"
                 }
             },
-            "reason": f"Execute deterministic {test_type} with post-hoc Tukey HSD correction on '{grp_col}' vs '{val_col}'.",
+            "reason": f"Execute One-way ANOVA with post-hoc Tukey HSD correction across all treatment groups.",
             "supported": True
         }
-
-    # Step 4: Create visualization
     if "create_visualization" not in completed:
         return {
             "status": "continue",
@@ -281,14 +500,12 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
                 "arguments": {
                     "group_column": grp_col,
                     "value_column": val_col,
-                    "chart_type": chart_type
+                    "chart_type": "box"
                 }
             },
-            "reason": f"Generate publication-grade interactive {chart_type} plot showing experimental distributions.",
+            "reason": "Generate publication-grade box plot showing distributions across all treatment groups.",
             "supported": True
         }
-
-    # Step 5: Finished
     return {
         "status": "complete",
         "next_action": None,
@@ -362,11 +579,12 @@ def run_agent_reasoning_loop(df: pd.DataFrame, question: str, max_iterations: in
             break
             
         if decision.get("status") == "complete":
-            # Ensure visualization was created if statistical comparison completed
-            if "compare_groups" in state["completed_analyses"] and "create_visualization" not in state["completed_analyses"]:
+            # Ensure visualization was created if statistical comparison or summary completed
+            has_stats = "compare_groups" in state["completed_analyses"] or "summarize_groups" in state["completed_analyses"]
+            if has_stats and "create_visualization" not in state["completed_analyses"]:
                 grp_col = current_stats.get("group_column", "treatment")
                 val_col = current_stats.get("value_column", "viability")
-                c_type = "scatter" if current_stats.get("test_type") == "dose_trend" else ("bar" if current_stats.get("test_type") in ["two_sample_t_test", "t_test"] else "box")
+                c_type = "scatter" if current_stats.get("test_type") == "dose_trend" else ("bar" if current_stats.get("test_type") in ["two_sample_t_test", "t_test"] or current_stats.get("comparison_type") == "descriptive" else "box")
                 viz_result = execute_tool("create_visualization", {"group_column": grp_col, "value_column": val_col, "chart_type": c_type}, working_df, current_stats)
                 current_plotly_spec = viz_result
                 state["completed_analyses"].append("create_visualization")
@@ -439,6 +657,11 @@ def run_agent_reasoning_loop(df: pd.DataFrame, question: str, max_iterations: in
         elif tool_name == "check_assumptions":
             state["current_findings"]["assumptions"] = tool_result
             state["remaining_information_needed"] = "Perform hypothesis test and compute effect sizes"
+        elif tool_name == "summarize_groups":
+            current_stats = tool_result
+            state["current_findings"]["summary"] = tool_result
+            state["final_result"] = tool_result
+            state["remaining_information_needed"] = "Generate visual distributions chart"
         elif tool_name == "compare_groups":
             current_stats = tool_result
             state["current_findings"]["statistics"] = tool_result
@@ -487,57 +710,116 @@ def run_agent_reasoning_loop(df: pd.DataFrame, question: str, max_iterations: in
         }
     }
 
+def _validate_explanation_entities(explanation: str, stats_result: Dict[str, Any]) -> bool:
+    """
+    Validates that the generated explanation discusses ONLY the entities present
+    in the computed stats result, preventing the 'Result: Drug B vs Control, Explanation: Drug A'
+    hallucination bug.
+    """
+    exp_lower = explanation.lower()
+    comp_type = stats_result.get("comparison_type")
+    
+    if comp_type == "pairwise":
+        target = stats_result.get("target_group", "")
+        ref = stats_result.get("reference_group", "")
+        
+        # Target group must be explicitly present
+        if target and target.lower() not in exp_lower:
+            return False
+            
+        # Reference group must be present if provided
+        if ref and ref.lower() not in exp_lower:
+            return False
+            
+        # Exclude other treatments from erroneously creeping into a pairwise contrast
+        summary = stats_result.get("group_summary", {})
+        for grp in summary.keys():
+            if isinstance(grp, str) and grp not in [target, ref] and len(grp) > 2:
+                if grp.lower() in exp_lower:
+                    return False
+                    
+    elif comp_type == "dose_trend":
+        if "dose" not in exp_lower and "concentration" not in exp_lower:
+            return False
+            
+    elif comp_type == "descriptive":
+        top = stats_result.get("top_performer", "")
+        if top and top.lower() not in exp_lower:
+            return False
+            
+    return True
+
 def _generate_verified_explanation(question: str, state: Dict[str, Any], stats_result: Dict[str, Any]) -> str:
     """
     Formulates interpretation strictly referencing verified Python tool results.
+    Validates generated entities; if validation fails, falls back to deterministic explanation.
     """
     if GEMINI_API_KEY:
         try:
-            return _call_gemini_explainer(question, stats_result)
+            candidate_text = _call_gemini_explainer(question, stats_result)
+            if _validate_explanation_entities(candidate_text, stats_result):
+                return candidate_text
         except Exception:
             pass
             
+    return _deterministic_explanation(stats_result)
+
+def _deterministic_explanation(stats_result: Dict[str, Any]) -> str:
     val_name = stats_result.get("value_column", "viability")
-    grp_name = stats_result.get("group_column", "treatment")
-    test_name = stats_result.get("test_name", "Statistical Test")
-    p_val_str = stats_result.get("formatted_p_value", "N/A")
-    top_performer = stats_result.get("top_performer", "")
-    top_mean = stats_result.get("top_mean", 0.0)
-    ref_group = stats_result.get("reference_group", "Control")
-    delta = stats_result.get("delta_vs_reference", 0.0)
+    comp_type = stats_result.get("comparison_type", "")
     summary = stats_result.get("group_summary", {})
     
-    if stats_result.get("test_type") == "dose_trend":
-        r = stats_result.get("correlation_r", 0.0)
-        slope = stats_result.get("slope", 0.0)
-        direction = "negative" if slope < 0 else "positive"
-        return (
-            f"An analysis of {val_name} across varying {grp_name} levels revealed a {direction} correlation "
-            f"(Pearson r = {r:.3f}, p {p_val_str}). Higher {grp_name} concentrations were associated with a "
-            f"{'reduction' if slope < 0 else 'increase'} in observed {val_name}.\n\n"
-            f"This describes the observed experiment and does not establish causality. "
-            f"Notice: Synthetic demonstration data — not real experimental results."
-        )
-    elif stats_result.get("test_type") in ["two_sample_t_test", "mann_whitney_u"]:
-        target = stats_result.get("target_group", top_performer)
-        target_mean = summary.get(target, {}).get("mean", top_mean)
-        ref_mean = summary.get(ref_group, {}).get("mean", 0.0)
-        diff = round(target_mean - ref_mean, 2)
-        diff_str = f"+{diff}" if diff > 0 else f"{diff}"
-        is_sig = stats_result.get("is_significant", False)
+    if comp_type == "pairwise":
+        target = stats_result.get("target_group", "Target")
+        ref = stats_result.get("reference_group", "Control")
+        target_mean = stats_result.get("target_mean", summary.get(target, {}).get("mean", 0.0) if isinstance(summary.get(target), dict) else 0.0)
+        ref_mean = stats_result.get("reference_mean", summary.get(ref, {}).get("mean", 0.0) if isinstance(summary.get(ref), dict) else 0.0)
+        diff_pp = stats_result.get("difference_pp", round(target_mean - ref_mean, 2))
+        diff_str = f"+{diff_pp}" if diff_pp > 0 else f"{diff_pp}"
+        test_name = stats_result.get("test", stats_result.get("test_name", "Welch's t-test"))
+        p_val_str = stats_result.get("formatted_p_value", f"= {stats_result.get('p_value', 'N/A')}")
+        is_sig = stats_result.get("significant", stats_result.get("is_significant", False))
         sig_str = "statistically significant" if is_sig else "not statistically significant"
         
         return (
             f"{target} produced a mean {val_name} of {target_mean}%, representing a {diff_str} percentage point "
             f"difference compared with {ref_group} (mean: {ref_mean}%). "
-            f"This difference was {sig_str} ({test_name}, p {p_val_str}).\n\n"
+            f"This difference was {sig_str} using {test_name} (p {p_val_str}).\n\n"
+            f"This describes the observed experiment and does not establish causality. "
+            f"Notice: Synthetic demonstration data — not real experimental results."
+        )
+    elif comp_type == "descriptive":
+        top = stats_result.get("top_performer", "")
+        top_mean = stats_result.get("top_mean", 0.0)
+        group_means = [f"{k}: {v.get('mean')}%" for k, v in summary.items() if isinstance(v, dict) and "mean" in v]
+        breakdown_str = f" Group breakdown: {', '.join(group_means)}." if group_means else ""
+        return (
+            f"Across observed treatments, {top} produced the highest mean {val_name} at {top_mean}%.{breakdown_str}\n\n"
+            f"This describes the observed experiment and does not establish causality. "
+            f"Notice: Synthetic demonstration data — not real experimental results."
+        )
+    elif comp_type == "dose_trend" or stats_result.get("test_type") == "dose_trend":
+        r = stats_result.get("correlation_r", 0.0)
+        slope = stats_result.get("slope", 0.0)
+        p_val_str = stats_result.get("formatted_p_value", f"= {stats_result.get('p_value', 'N/A')}")
+        direction = "negative" if slope < 0 else "positive"
+        return (
+            f"An analysis of {val_name} across varying dose concentrations revealed a {direction} correlation "
+            f"(Pearson r = {r:.3f}, p {p_val_str}). Higher dose levels were associated with a "
+            f"{'reduction' if slope < 0 else 'increase'} in observed {val_name} (slope: {slope:.3f}).\n\n"
             f"This describes the observed experiment and does not establish causality. "
             f"Notice: Synthetic demonstration data — not real experimental results."
         )
     else:
-        # One-way ANOVA with Tukey HSD post-hoc evaluation
+        # Multi-group ANOVA
+        top_performer = stats_result.get("top_performer", "")
+        top_mean = stats_result.get("top_mean", 0.0)
+        ref_group = stats_result.get("reference_group", "Control")
+        delta = stats_result.get("delta_vs_reference", 0.0)
         diff_str = f"+{delta}" if delta > 0 else f"{delta}"
-        ref_mean = summary.get(ref_group, {}).get("mean", 0.0)
+        test_name = stats_result.get("test_name", "One-way ANOVA")
+        p_val_str = stats_result.get("formatted_p_value", "N/A")
+        ref_mean = summary.get(ref_group, {}).get("mean", 0.0) if isinstance(summary.get(ref_group), dict) else 0.0
         top_posthoc = stats_result.get("top_vs_reference_posthoc")
         
         if top_posthoc:
@@ -565,7 +847,7 @@ def _generate_verified_explanation(question: str, state: Dict[str, Any], stats_r
                 )
         else:
             return (
-                f"{top_performer} produced the highest mean cell {val_name} at {top_mean}%, "
+                f"{top_performer} produced the highest mean {val_name} at {top_mean}%, "
                 f"which is {diff_str} percentage points higher than {ref_group} (mean: {ref_mean}%). "
                 f"Across all treatment groups, variation in {val_name} was statistically significant "
                 f"({test_name}, p {p_val_str}).\n\n"
@@ -595,18 +877,26 @@ ALLOWED PREDEFINED TOOLS:
 {json.dumps(TOOL_REGISTRY, indent=2)}
 
 INSTRUCTIONS:
-1. If the user question mentions 'dose', 'concentration', or 'trend':
-   - Use group_column='dose', value_column='viability', and test_type='dose_trend'.
-   - chart_type must be 'scatter'.
-2. If the user question asks about comparing a specific drug with control (e.g. 'Is Drug B significantly different from Control?'):
-   - Use test_type='two_sample_t_test', target_group='Drug B' (or the mentioned drug), and ref_group='Control'.
-   - chart_type must be 'bar'.
-3. If the user question asks about comparing all treatments or which treatment produced the highest viability:
-   - Use group_column='treatment', value_column='viability', and test_type='one_way_anova'.
-   - chart_type must be 'box'.
-4. Before calling compare_groups, ensure check_assumptions is called with the selected group_column and value_column.
-5. After compare_groups has executed, call create_visualization with the matching chart_type.
-6. Once both compare_groups and create_visualization are in completed_analyses, set status='complete' and next_action=null.
+1. Descriptive questions (e.g., 'Which treatment has the highest mean viability?', 'Summarize treatment groups'):
+   - Do NOT run hypothesis tests. Call 'summarize_groups' with group_column='treatment', value_column='viability'.
+   - Then call 'create_visualization' with chart_type='bar'.
+2. Specific drug dose questions (e.g., 'How does Drug B respond to dose?'):
+   - First call 'filter_dataset' with filters={{"treatment": ["Drug B"]}} to restrict to the target treatment.
+   - Then call 'compare_groups' with group_column='dose', value_column='viability', test_type='dose_trend'.
+   - Then call 'create_visualization' with chart_type='scatter'.
+3. General dose trend questions (e.g., 'How does viability change with dose?'):
+   - Call 'check_assumptions' with group_column='dose', value_column='viability'.
+   - Call 'compare_groups' with group_column='dose', value_column='viability', test_type='dose_trend'.
+   - Call 'create_visualization' with chart_type='scatter'.
+4. Pairwise questions comparing a specific drug against control (e.g. 'Is Drug B significantly different from Control?'):
+   - First call 'check_assumptions' with group_column='treatment', value_column='viability'.
+   - Then call 'compare_groups' with test_type='two_sample_t_test', target_group='Drug B', ref_group='Control'.
+   - Then call 'create_visualization' with chart_type='bar'.
+5. Multi-group overall difference questions (e.g., 'Are treatments significantly different overall?'):
+   - Call 'check_assumptions' with group_column='treatment', value_column='viability'.
+   - Then call 'compare_groups' with test_type='one_way_anova', ref_group='Control'.
+   - Then call 'create_visualization' with chart_type='box'.
+6. Once the analysis and visualization tools are completed, return status='complete' and next_action=null.
 """
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -621,7 +911,7 @@ INSTRUCTIONS:
         raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
         parsed = json.loads(raw_text)
         
-        # Semantic validation & argument normalization
+        # Python verification & argument normalization
         if parsed.get("status") == "continue" and parsed.get("next_action"):
             action = parsed["next_action"]
             tool = action.get("tool")
@@ -630,6 +920,7 @@ INSTRUCTIONS:
             
             args = action.setdefault("arguments", {})
             q_lower = state["user_question"].lower()
+            treatments = state.get("dataset_metadata", {}).get("summary", {}).get("treatments", ["Control", "Drug A", "Drug B", "Drug C"])
             
             # Align domain variables for common experimental queries
             if "dose" in q_lower or "concentration" in q_lower or "trend" in q_lower:
@@ -639,16 +930,17 @@ INSTRUCTIONS:
                     args["test_type"] = "dose_trend"
                 elif tool == "create_visualization":
                     args["chart_type"] = "scatter"
-            elif "is drug" in q_lower or "vs control" in q_lower or "different from control" in q_lower:
+            elif any(d.lower() in q_lower for d in treatments if d.lower() != "control"):
+                # Pairwise comparison to control
+                matched_target = None
+                for d in treatments:
+                    if d.lower() in q_lower and d.lower() != "control":
+                        matched_target = d
+                        break
                 if tool == "compare_groups":
                     args["test_type"] = "two_sample_t_test"
                     args["ref_group"] = "Control"
-                    for d in ["Drug A", "Drug B", "Drug C"]:
-                        if d.lower() in q_lower:
-                            args["target_group"] = d
-                            break
-                    if "target_group" not in args:
-                        args["target_group"] = "Drug B"
+                    args["target_group"] = matched_target or "Drug B"
                 elif tool == "create_visualization":
                     args["chart_type"] = "bar"
                 
@@ -668,9 +960,10 @@ Write a concise 2-3 sentence scientific summary explaining this finding.
 STRICT RULES:
 1. ONLY use the exact numerical values provided above. Do NOT invent or calculate any new numbers.
 2. State the test name and p-value as calculated.
-3. If this was a dose or concentration trend analysis, explicitly mention the word 'dose' and explain the correlation direction and slope.
-4. If Tukey HSD post-hoc testing was performed, explicitly report whether the specific contrast between the top performer and control is statistically significant after multiple comparison adjustment. Do NOT claim the top performer is significantly different from control if p_adj >= 0.05.
-5. You must include these exact sentences at the end:
+3. If this was a pairwise comparison (comparison_type='pairwise'), ONLY discuss the target_group and reference_group. Do NOT mention any other drugs!
+4. If this was a dose or concentration trend analysis, explicitly mention the word 'dose' and explain the correlation direction and slope.
+5. If Tukey HSD post-hoc testing was performed, explicitly report whether the specific contrast between the top performer and control is statistically significant after multiple comparison adjustment. Do NOT claim the top performer is significantly different from control if p_adj >= 0.05.
+6. You must include these exact sentences at the end:
 "This describes the observed experiment and does not establish causality. Notice: Synthetic demonstration data — not real experimental results."
 """
     resp = httpx.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=8.0)
