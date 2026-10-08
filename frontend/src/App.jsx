@@ -4,6 +4,7 @@ import DatasetWorkbench from './components/DatasetWorkbench';
 import QuestionConsole from './components/QuestionConsole';
 import AnalysisActivity from './components/AnalysisActivity';
 import ResultDeck from './components/ResultDeck';
+import AnalysisTraceAudit from './components/AnalysisTraceAudit';
 import { AlertCircle } from 'lucide-react';
 
 export default function App() {
@@ -137,6 +138,9 @@ export default function App() {
         steps={analysisSteps}
         isAnalyzing={isAnalyzing}
       />
+
+      {/* Screen C2: Analysis Trace + Statistical Audit (recorded by the backend; shown after completion) */}
+      <AnalysisTraceAudit result={analysisResult} />
 
       {/* Screen D: Verified Results Deck */}
       <ResultDeck 

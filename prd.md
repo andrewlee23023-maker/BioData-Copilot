@@ -20,8 +20,9 @@ Source: `scope.md > The Unique Kernel` and `scope.md > The Core Loop`.
    - ○ Generating interactive visualization
    - ○ Synthesizing grounded scientific interpretation
 5. **Results & Grounded Scientific Explanation (Screen D):** The app presents:
-   - A primary stat summary card (e.g., "Treatment B produced the highest mean cell viability: 94.8%, +3.6 pp vs Control, p = 0.014 via One-way ANOVA")
+   - A primary stat summary card (e.g., "Drug B produced the highest mean cell viability: 95.09%, +4.04 pp vs Control, p < 0.001 via One-way ANOVA with Tukey HSD post-hoc")
    - An interactive Plotly chart (box plot, bar with error bars, or dose-response scatter)
+   - An **Analysis Trace** (what the backend did: dataset inspected, groups identified, sample sizes checked, assumptions checked, test executed or blocked, result validated) and a **Statistical Audit** (selected test, groups, n, means, difference, p-value, and which parts were computed by Python vs interpreted by Gemini). Both are returned with the finished result, not streamed live.
    - A concise scientific interpretation strictly grounded in the computed output
    - Explicit scientific disclaimers: synthetic demonstration data notice and non-causality disclosure.
 
@@ -54,28 +55,31 @@ A unified single-page responsive layout with distinct functional sections:
   - *"Which treatment has the highest viability?"*
   - *"Is Drug B significantly different from Control?"*
   - *"How does viability change with dose?"*
-- **Structured Plan Generation:** AI agent maps question to structured JSON schema (`analysis_type`, `group_column`, `value_column`, `reference_group`, `test_type`).
+- **Structured Plan Generation:** The Gemini planner maps the question to a structured tool call (tool + arguments such as `group_column`, `value_column`, `test_type`, `ref_group`, `target_group`). Python validates every plan (known tool, existing columns, supported test, no repeated tools); invalid plans are rejected and the deterministic planner is used instead.
 - *Acceptance Criteria:*
   - [ ] Clicking a suggested chip immediately fills the question field.
   - [ ] The AI outputs valid JSON specifying the analysis without performing mathematical calculation itself.
+  - [ ] A Gemini plan that names an unknown tool, missing column, or unsupported test is rejected by Python and recorded in the trace.
 
 ### 3. Deterministic Statistical Computation (Python Engine)
 - **Supported Tests:**
   - Group Summaries: mean, median, standard deviation, count (n).
-  - Two-Group Comparison: Student's / Welch's t-test, Mann-Whitney U test.
-  - Multi-Group Comparison: One-way ANOVA with post-hoc comparison.
-  - Dose / Trend: Pearson / Spearman correlation, group mean trends across doses.
+  - Two-Group Comparison: Welch's t-test, Mann-Whitney U test.
+  - Multi-Group Comparison: One-way ANOVA with Tukey HSD post-hoc comparison.
+  - Dose / Trend: Pearson correlation and linear regression across a numeric dose column.
 - **Deterministic Plots:** Generates interactive Plotly specification (JSON) for box plots, bar charts with SEM/SD error bars, and dose-response scatter/line charts.
 - *Acceptance Criteria:*
   - [ ] All reported means, differences, test statistics (F, t, U), and p-values are computed directly by SciPy/Pandas.
-  - [ ] An unviable comparison (e.g., n < 2 per group) returns a clear scientific error rather than crashing.
+  - [ ] **Statistical gate:** before any inferential test, Python verifies the columns exist, the measurement is numeric, at least 2 valid groups exist, the comparison is valid, variance is non-zero, and **n ≥ 3 in every compared group**. If any check fails, the test is not run; the result lists structured blocked reasons and still includes descriptive statistics. The gate lives in the stats code, so the LLM planner cannot bypass it.
+  - [ ] Variance imbalance is reported as a warning (not a block); normality is stated as "not formally assessed".
 
 ### 4. Grounded Scientific Interpretation
 - **AI Synthesis:** AI receives the exact structured numerical result from Python and generates a concise 2–3 sentence biological summary.
 - **Guardrails:**
   - Mandatory disclaimer: *"Synthetic demonstration data — not real experimental results."*
   - Mandatory causal limitation: *"This describes the observed experiment and does not establish causality."*
-  - Zero hallucination rule: No numeric value appears in the explanation that wasn't in the Python output.
+  - Zero hallucination rule: No numeric value appears in the explanation that wasn't in the Python output. Explanations are entity-validated; on mismatch, a deterministic template is used and the audit labels the interpretation source.
+  - Blocked analyses are always explained by a fixed template (never by the LLM) and state that no conclusion about group differences can be drawn.
 - *Acceptance Criteria:*
   - [ ] The interpretation references the computed p-value and group difference accurately.
   - [ ] The disclaimers are visibly displayed below the result card.
@@ -86,19 +90,23 @@ A unified single-page responsive layout with distinct functional sections:
 - **Analyzing State:** Action button disabled with spinner. Stepper shows active backend steps.
 - **Results State:** Results deck expands with animated entry. Chart rendered and responsive.
 - **Error State (Unsupported Question):** E.g., user asks *"Predict patient survival from this dataset"*. App returns: *"This demo currently supports descriptive analyses, group comparisons, correlations, and basic experimental trends."*
-- **Error State (Missing Column):** E.g., user asks *"Compare expression levels"*. App returns: *"Could not find an expression measurement column in this dataset."*
+- **Error State (Missing Column):** E.g., user asks *"Compare expression levels"*. App returns: *"I couldn't find an expression measurement in this dataset."*
+- **Blocked State (Inadequate Data):** E.g., a compared group has n < 3. The inferential test is not run; the audit shows "None: the test was not run", the blocking reasons, and descriptive means with n.
+- **Upload Limit:** Files over 25 MB are rejected with HTTP 413 and a friendly message.
 
 ## Product Decisions
-- **Predefined Analysis Tools Only:** Arbitrary Python code execution from LLMs was rejected due to safety and unpredictability; keeping 4 verified analytical tools guarantees 100% demo reliability.
+- **Predefined Analysis Tools Only:** Arbitrary Python code execution from LLMs was rejected due to safety and unpredictability; a small registry of validated tools (inspect, filter, check assumptions, summarize, compare, visualize) keeps results reproducible.
+- **Gemini reasons; Python computes:** Gemini proposes plans and explains verified results; Python validates plans, enforces the statistical gate, and performs every calculation. Gemini cannot override a failed guardrail.
 - **Pre-packaged Synthetic Dataset:** Built directly into the app so judges and reviewers can test the complete loop in 5 seconds with zero setup.
 - **Plotly for Visualizations:** Chosen over static PNGs so users can hover over data points, inspect replicate values, and zoom.
 
 ## What We're Building (POC)
 - Complete single-page application with FastAPI backend and React + Plotly frontend.
 - Synthetic cell-viability assay generator/loader.
-- 4 backend analytical tools (inspect, summarize, compare, plot).
-- Gemini API planner & grounded explainer.
-- 5 key test scenarios passing reliably.
+- 6 backend tools (inspect, filter, check assumptions, summarize, compare, plot) behind a validated registry.
+- Gemini API planner & grounded explainer with a deterministic offline fallback (model configurable via `GEMINI_MODEL`).
+- Statistical gate, Analysis Trace, and Statistical Audit.
+- A pytest suite covering guardrails, plan validation, explanation grounding, upload limit, CORS, and session limits.
 
 ## Deferred From the POC
 - Custom chart styling editor (color picker, axis range adjustments).
@@ -112,4 +120,4 @@ A unified single-page responsive layout with distinct functional sections:
 - Fitting multi-parameter pharmacological models (e.g., non-linear 4PL curves) for the initial MVP.
 
 ## Open Questions
-- None blocking spec: Gemini API key will be read from environment variable `GEMINI_API_KEY`.
+- None blocking. Gemini API key is read from `GEMINI_API_KEY`; the model from `GEMINI_MODEL`.

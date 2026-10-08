@@ -1,198 +1,177 @@
 # BioData Copilot 🧬
 
-> **BioData Copilot is an AI agent that plans and adapts reproducible analysis workflows for experimental biotech datasets.**  
-> *"LLM reasons; Python computes."*
+> **Ask plain-English questions about your experimental data. Get verified statistics, not hallucinated ones.**  
+> *"Gemini reasons; Python computes."*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
-[![Tests: Pytest](https://img.shields.io/badge/Tests-23%2F23%20Passing-brightgreen.svg)](backend/tests/)
+[![Tests: pytest](https://img.shields.io/badge/Tests-pytest-brightgreen.svg)](backend/tests/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%2F%20SciPy-009688.svg)](backend/)
 [![React 18](https://img.shields.io/badge/Frontend-React%2018%20%2F%20Plotly-61DAFB.svg)](frontend/)
 
 ---
 
-## 90-Second Demo & Pitch
-When bench scientists analyze cell-viability or dose-response assays, traditional chatbots often hallucinate numbers or invent $p$-values. BioData Copilot eliminates this by enforcing a hard architectural boundary:
-- **LLM acts as the planner and reasoner:** Decides what information is needed, selects structured tools, adapts based on evidence, and synthesizes grounded explanations.
-- **Python acts as the verified computer:** SciPy and NumPy deterministically calculate all statistics ($p$-values, effect sizes, Tukey HSD contrasts, Pearson correlations), while Plotly renders publication-grade charts.
+## 90-Second Demo
+
+1. **Click "Try Example Dataset"**: a synthetic cell-viability assay (127 observations, 4 treatments, 3 doses).
+2. **Ask:** *"Is Drug B significantly different from Control?"*
+3. **Read the result:**
+   - **Analysis Trace**: what the backend did: dataset inspected → groups identified → sample sizes checked → assumptions checked → test executed → result validated.
+   - **Statistical Audit**: test, groups, n, means, difference, p-value, and who computed / interpreted what.
+   - An interactive Plotly chart and a short, grounded explanation.
+4. **Try to break it.** Upload a CSV where one group has only 2 replicates and ask the same question. The test is **blocked**, the audit says why, and you still get descriptive statistics.
+
+More questions to try: *"Which treatment has the highest mean viability?"* · *"How does Drug B respond to dose?"* · *"Are treatments significantly different overall?"* · *"Can you predict patient survival?"* (politely refused)
 
 ---
 
-## Why It Matters
-- **Zero Hallucinated Numbers:** Every statistic displayed originates directly from verified Python tools.
-- **Adaptive Workflows:** Unlike fixed scripts, the agent dynamically adapts its tool execution plan depending on whether the user asks a pairwise question, a descriptive summary question, or a filtered dose-response question.
-- **Rigorous Scientific Semantics:** Pairwise comparisons strictly contrast target treatments against reference controls (e.g. `Drug B vs Control`), preventing "top performer" ranking conflation.
+## Gemini reasons; Python computes
+
+Chatbots invent p-values. BioData Copilot draws a hard line between what the LLM may do and what only Python may do:
+
+1. **Gemini interprets the scientific question** and proposes a structured analysis plan (which tool, which columns, which test).
+2. **Python validates the plan.** Unknown tools, missing columns, unsupported tests, or malformed plans are rejected; the deterministic planner takes over.
+3. **Python performs every calculation** (SciPy / pandas / NumPy) after enforcing the scientific guardrails.
+4. **Gemini explains the verified result.** Its text is checked against the computed entities and falls back to a fixed template if it drifts.
+5. **Gemini cannot override the guardrails.** The statistical gate lives inside the Python stats code, so no plan, tool order, or prompt can run a test whose conditions failed.
+
+No `GEMINI_API_KEY`? The deterministic fallback planner and explanation templates keep the whole demo working offline.
 
 ---
 
 ## How It Works
 
 ```
-                     ┌──────────────────┐
-                     │   User Question  │
-                     └────────┬─────────┘
-                              ↓
-                     ┌──────────────────┐
-                     │   Gemini Agent   │
-                     │  Planner/Router  │
-                     └────────┬─────────┘
-                              ↓
-                     ┌──────────────────┐
-                     │    Validation    │
-                     │ Python Arguments │
-                     └────────┬─────────┘
-                              ↓
-      ┌───────────────────────┼───────────────────────┐
-      ↓                       ↓                       ↓
-inspect_dataset         filter_dataset          compare_groups
-(Schema & dimensions)   (Treatment subset)     (SciPy t-test/ANOVA)
-      │                       │                       │
-      └───────────────────────┼───────────────────────┘
-                              ↓
-                     ┌──────────────────┐
-                     │  Python / SciPy  │
-                     │  Deterministic   │
-                     │   Computation    │
-                     └────────┬─────────┘
-                              ↓
-                     ┌──────────────────┐
-                     │ Structured Facts │
-                     │  + Exact Stats   │
-                     └────────┬─────────┘
-                              ↓
-                     ┌──────────────────┐
-                     │ Agent Evaluates  │
-                     │ Evidence Suffic. │
-                     └────────┬─────────┘
-                              ↓
-                    ┌───────────────────┐
-                    │  Verified Result  │
-                    │   + Plotly Spec   │
-                    └───────────────────┘
+ User question
+      ↓
+ Gemini (planner)         → proposes a structured plan
+      ↓
+ Python plan validation   → rejects unknown tools / columns / tests / malformed plans
+      ↓
+ Python statistical gate  → n ≥ 3 per group, numeric data, valid groups & comparison
+      │                       FAIL → inferential test blocked (descriptive stats still returned)
+      ↓ PASS
+ SciPy computation        → Welch t-test · ANOVA + Tukey · dose trend · descriptive stats
+      ↓
+ Gemini (explainer)       → explains ONLY the verified numbers; Python entity-checks the text
+      ↓
+ Result + Plotly spec + Analysis Trace + Statistical Audit
 ```
 
 ---
 
-## Agent Architecture: LLM → Tool → Python → Result → LLM
+## Supported Analyses
 
-1. **Inspect State:** Agent evaluates dataset columns, sample sizes, and user intent.
-2. **Select Tool:** Proposes a structured tool call (`inspect_dataset`, `filter_dataset`, `check_assumptions`, `summarize_groups`, `compare_groups`, `create_visualization`).
-3. **Python Execution Authority:** Python verifies that columns exist, treatment names match, and sample sizes meet criteria before executing.
-4. **Evaluate Evidence:** Agent inspects computed numerical outputs and determines if additional analysis or visualization is required.
-5. **Entity Validation Safeguard:** Verbalized explanations are validated by the backend to ensure only target entities are discussed; if entity mismatch occurs, the system automatically falls back to deterministic phrasing.
+| Analysis | Method |
+|---|---|
+| Descriptive group summaries | n, mean, SD, SEM, median, min, max |
+| Two-group comparison | Welch's two-sample t-test; Mann-Whitney U (selectable by the Gemini planner) |
+| Multi-group comparison | One-way ANOVA with Tukey HSD post-hoc |
+| Dose / trend | Pearson correlation + linear regression (numeric dose column) |
 
----
-
-## Workflow Examples
-
-### Example 1 — Pairwise Inferential Question
-**User:** *"Is Drug B significantly different from Control?"*
-- **Agent Trace:**
-  1. `inspect_dataset` → 127 observations, 4 treatments, 3 doses
-  2. `check_assumptions` → Sample sizes verified ($n \ge 3$); variance checked
-  3. `compare_groups` → Welch's Two-Sample t-test ($p = 0.0003$)
-  4. `create_visualization` → Publication bar chart with SEM
-- **Verified Result:** `Drug B vs Control` (+4.04 percentage points, $p < 0.001$).
-
-### Example 2 — Descriptive Question
-**User:** *"Which treatment has the highest mean viability?"*
-- **Adaptive Workflow:**
-  1. `inspect_dataset` → Schema mapped
-  2. `summarize_groups` → Mean, SD, SEM, median across treatments
-  3. `create_visualization` → Bar distribution
-  - *(Notice: No unnecessary hypothesis test executed!)*
-- **Verified Result:** Drug B produced highest mean viability at 95.09%.
-
-### Example 3 — Filtered Dose-Response Question
-**User:** *"How does Drug B respond to dose?"*
-- **Adaptive Workflow:**
-  1. `inspect_dataset` → Schema mapped
-  2. `filter_dataset` → Restricts rows strictly to `{"treatment": ["Drug B"]}`
-  3. `compare_groups` → Pearson correlation & linear regression slope on filtered subset
-  4. `create_visualization` → Scatter plot with trendline
-- **Verified Result:** Negative dose correlation ($r = -0.584, p < 0.001$).
-
----
-
-## Tech Stack
-- **AI Planning Layer:** Google Gemini API (`gemini-3.5-flash-lite`) with native Structured Outputs (`responseSchema`).
-- **Deterministic Python Fallback:** Built-in state machine provides full functionality even if API is offline.
-- **Scientific Computing Engine:** SciPy (`scipy.stats` for Welch's t-test, One-way ANOVA, Tukey HSD post-hoc contrasts, Pearson correlation, linear regression), Pandas, NumPy.
-- **Backend API:** FastAPI, Uvicorn, Pydantic, HTTPX.
-- **Frontend User Interface:** React 18, Vite, Plotly.js (`react-plotly.js`), Lucide Icons.
+Not supported (by design, for this MVP): Student's t-test, Spearman correlation, two-way ANOVA, IC50 / 4PL curve fitting, survival or predictive modeling. Unsupported questions get a clear refusal.
 
 ---
 
 ## Scientific Guardrails
 
-| Guardrail | Purpose | Implementation |
-|---|---|---|
-| **Entity Validation** | Eliminates drug hallucination (e.g. discussing Drug A when Drug B was analyzed). | Explanation entity check rejects invalid drug mentions and falls back to deterministic template. |
-| **Defensible Assumption Language** | Avoids overclaiming parametric validity. | Reports: *"No large variance imbalance detected; normality was not formally assessed."* |
-| **ANOVA vs Pairwise Distinction** | Avoids falsely inferring pairwise significance from overall ANOVA. | Runs post-hoc Tukey HSD and reports contrasts adjusted for family-wise error rate ($p_{\text{adj}}$). |
-| **Causality & Demonstration Notice** | Research transparency. | Persistent banner: *"This describes the observed experiment and does not establish causality. Synthetic demonstration data."* |
+| Guardrail | What it does |
+|---|---|
+| **Statistical gate** | Before any inferential test: columns exist, measurement is numeric, ≥ 2 valid groups, valid comparison (no unknown or identical groups), non-zero variance, and **n ≥ 3 in every compared group**. If anything fails, the test does not run; the result carries structured `blocked_reasons` and descriptive statistics only. |
+| **Plan validation** | Every Gemini-proposed tool call is validated by Python. Invalid plans are rejected, logged in the trace, and replaced by the deterministic planner. |
+| **Entity validation** | Explanations may only discuss the groups actually compared; mismatches fall back to a template. Blocked analyses are always explained by a fixed template. |
+| **ANOVA vs pairwise** | Post-hoc Tukey HSD is reported, so overall ANOVA significance is never mistaken for a specific drug-vs-control effect. |
+| **Honest assumption language** | Variance imbalance is reported as a warning (it does not block). Normality is *not* formally assessed, and the app says so. |
+| **Causality & demo notice** | Every interpretation states that it does not establish causality and that the demo data is synthetic. |
+
+---
+
+## Workflow Examples
+
+### 1. Pairwise question
+**"Is Drug B significantly different from Control?"** → `inspect_dataset` → `check_assumptions` → `compare_groups` (Welch's t-test) → `create_visualization`  
+**Verified result:** Drug B vs Control, +4.04 percentage points, p < 0.001.
+
+### 2. Descriptive question (no unnecessary hypothesis test)
+**"Which treatment has the highest mean viability?"** → `inspect_dataset` → `summarize_groups` → `create_visualization`  
+**Verified result:** Drug B, mean viability 95.09.
+
+### 3. Filtered dose-response question
+**"How does Drug B respond to dose?"** → `inspect_dataset` → `filter_dataset` (Drug B only) → `compare_groups` (dose trend) → `create_visualization`  
+**Verified result:** slight positive dose correlation (r = 0.483, p = 0.004).
+
+### 4. Blocked analysis
+Group with n = 2, then **"Is Drug C significantly different from Control?"** → `check_assumptions` flags the group → `compare_groups` refuses to run the test.  
+**Result:** no p-value; reason shown (*"Every compared group needs n >= 3; too small: Drug C (n = 2)"*); descriptive means and n still displayed.
 
 ---
 
 ## Running Locally
 
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
+**Prerequisites:** Python 3.10+, Node.js 18+
 
-### 1. Clone & Set Up Environment
 ```bash
 git clone https://github.com/andrewlee23023-maker/BioData-Copilot.git
 cd BioData-Copilot
 
-# Optional: Add your Gemini API key
-cp .env.example .env
-# Edit .env and set GEMINI_API_KEY=your_key
-```
-*(Deterministic Python analysis provides a reliable fallback when the LLM is unavailable).*
-
-### 2. Run Test Suite (23 Passing Tests)
-```bash
+# Backend
 pip install -r requirements.txt
+cp .env.example .env          # optional: add GEMINI_API_KEY for Gemini planning/explanations
 python -m pytest backend/tests/ -v
-```
-
-### 3. Start Backend Server
-```bash
 python -m uvicorn backend.main:app --reload --port 8000
-```
-API running at `http://127.0.0.1:8000`.
 
-### 4. Start Frontend
-```bash
+# Frontend (second terminal)
 cd frontend
 npm install
-npm run dev
+npm run dev                   # open http://localhost:5173
 ```
-Open your browser at **`http://localhost:5173`**.
+
+### Configuration (`.env`)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GEMINI_API_KEY` | *(empty)* | Enables Gemini. Without it, the deterministic fallback is used. |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model used for planning and explanations. |
+| `FRONTEND_ORIGIN` | `http://localhost:5173` | Allowed CORS origin(s); comma-separate several. |
+| `MAX_SESSIONS` | `50` | In-memory dataset sessions kept (oldest-used evicted first). |
+| `SESSION_TTL_SECONDS` | `3600` | Idle time before a session expires. |
+
+CSV uploads are limited to **25 MB** (larger files get HTTP 413).
+
+---
+
+## Tech Stack
+- **AI layer:** Google Gemini API with structured outputs (`responseSchema`), model set by `GEMINI_MODEL`
+- **Deterministic fallback:** built-in planner + explanation templates (works fully offline)
+- **Computation:** SciPy (`ttest_ind` Welch, `f_oneway`, `tukey_hsd`, `mannwhitneyu`, `pearsonr`, `linregress`), pandas, NumPy
+- **Backend:** FastAPI, Uvicorn, Pydantic, HTTPX
+- **Frontend:** React 18, Vite, Plotly.js (`react-plotly.js`), Lucide icons
+
+---
+
+## Known Limitations
+- The **Analysis Trace is a record returned with the finished result**, not a live stream.
+- Normality is not formally tested; variance imbalance is a warning, not a block.
+- Sessions live in memory only (capped and expiring); restarting the server clears them.
+- The example dataset is synthetic and for demonstration only.
 
 ---
 
 ## Project Structure
 ```
-biodata-copilot/
 ├── backend/
-│   ├── main.py              # FastAPI endpoints (/api/load-demo, /api/analyze)
-│   ├── agent.py             # Agent reasoning loop, tool registry & entity validation
+│   ├── main.py              # FastAPI: upload (25 MB cap), CORS, bounded sessions, /api/analyze
+│   ├── agent.py             # Planner, plan/tool validation, explanation grounding, trace & audit
 │   ├── tools/
-│   │   ├── inspect.py       # Generalized dataset schema inspection
-│   │   ├── filter.py        # Dataset filtering tool
-│   │   ├── stats.py         # SciPy hypothesis tests & descriptive stats
-│   │   └── viz.py           # Plotly interactive chart specifications
-│   └── tests/               # 23 comprehensive pytest regression tests
-├── frontend/
-│   ├── src/
-│   │   ├── components/      # ResultDeck, AnalysisActivity, DatasetWorkbench
-│   │   ├── App.jsx          # Main application container
-│   │   └── index.css        # Scientific biotech styling & design system
-├── data/
-│   └── synthetic_viability.csv # 127-row cell viability assay dataset
-├── LICENSE                  # MIT License
-└── README.md                # Project documentation
+│   │   ├── inspect.py       # Dataset schema inspection
+│   │   ├── filter.py        # Dataset filtering
+│   │   ├── stats.py         # Statistical gate + SciPy tests + descriptive stats
+│   │   └── viz.py           # Plotly chart specifications
+│   └── tests/               # pytest: guardrails, agent validation, API
+├── frontend/src/
+│   ├── App.jsx
+│   └── components/          # …, AnalysisTraceAudit.jsx (trace + statistical audit)
+├── data/synthetic_viability.csv   # 127-row synthetic viability assay
+└── generate_data.py         # Regenerates the example dataset (seed 42)
 ```
 
 ---
