@@ -342,11 +342,56 @@ def decide_next_action(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any
         decision["plan_rejected"] = plan_rejected
     return decision
 
+# ---------------------------------------------------------------------------
+# Unknown-group detection (deterministic planner)
+# A question that names a group absent from the dataset (e.g. "Drug Z") is a
+# clarification request, not a silent rerun of a broader analysis. Candidate
+# mentions are only treated as group references when the question shows
+# analysis intent, so prose like "drug response mechanism" is not flagged.
+# ---------------------------------------------------------------------------
+# A group-like mention is a drug/treatment/group label: a single letter or a
+# number ("Drug Z", "Treatment 1"). Requiring a label-shaped token keeps prose
+# like "treatment has the highest ..." or "drug response mechanism" from
+# false-positive matching. Quoted phrases ("Drug Z") are also honored.
+_UNKNOWN_GROUP_PATTERNS = [
+    re.compile(r"\b[Dd][Rr][Uu][Gg]\s+([A-Za-z]|\d+)\b"),
+    re.compile(r"\b[Tt][Rr][Ee][Aa][Tt][Mm][Ee][Nn][Tt]\s+([A-Za-z]|\d+)\b"),
+    re.compile(r"\b[Gg][Rr][Oo][Uu][Pp]\s+([A-Za-z]|\d+)\b"),
+]
+_QUOTED_PHRASE_RE = re.compile(r"[\"']([^\"']+)[\"']")
+_ANALYSIS_INTENT_KW = [
+    "vs", "versus", "compare", "compared", "different", "between", "significant",
+    "dose", "trend", "mean", "average", "viability", "effect", "higher", "lower",
+    "summar", "correlation", "test",
+]
+
+
+def _unknown_group_mentions(question: str, known_groups: List[str]) -> List[str]:
+    """Return group-like mentions in the question that match no known group.
+
+    Matching is case-insensitive; the returned names keep the question's
+    original casing for display.
+    """
+    q_lower = question.lower()
+    known = {g.lower() for g in known_groups}
+    candidates: List[str] = []
+    for pat in _UNKNOWN_GROUP_PATTERNS:
+        candidates.extend(m.group(0).strip() for m in pat.finditer(question))
+    candidates.extend(m.group(1).strip() for m in _QUOTED_PHRASE_RE.finditer(question))
+    unknown: List[str] = []
+    for c in candidates:
+        if c.lower() not in known and c.lower() not in {u.lower() for u in unknown}:
+            unknown.append(c)
+    if unknown and not any(kw in q_lower for kw in _ANALYSIS_INTENT_KW):
+        return []
+    return unknown
+
+
 def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
     q_lower = state["user_question"].lower()
     completed = state.get("completed_analyses", [])
     metadata = state.get("dataset_metadata", {})
-    
+
     # Step 1: Inspect dataset
     if "inspect_dataset" not in completed:
         return {
@@ -358,17 +403,24 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
             "reason": "Inspect dataset schema, available columns, and data types to identify grouping and measurement variables.",
             "supported": True
         }
-        
+
     num_cols = metadata.get("numeric_columns", ["viability"])
     cat_cols = metadata.get("categorical_columns", ["treatment"])
     treatments = metadata.get("summary", {}).get("treatments", ["Control", "Drug A", "Drug B", "Drug C"])
-    
-    # Check if a specific treatment was targeted
-    target_drug = None
-    for d in treatments:
-        if d.lower() in q_lower and d.lower() != "control":
-            target_drug = d
-            break
+
+    # Groups mentioned in the question, in order of first appearance.
+    # Question order (not dataset order) decides target vs reference.
+    _mentioned: List[str] = []
+    for d in sorted(treatments, key=lambda d: q_lower.find(d.lower()) if d.lower() in q_lower else float("inf")):
+        if d.lower() in q_lower:
+            _mentioned.append(d)
+
+    # The compared group is the first named non-Control group; the reference is
+    # any other explicitly named group, defaulting to Control. So
+    # "Compare Drug A and Drug B" compares A vs B, not A vs Control.
+    target_drug = next((d for d in _mentioned if d.lower() != "control"), None)
+    _other_groups = [d for d in _mentioned if d != target_drug]
+    ref_group = _other_groups[0] if _other_groups else "Control"
 
     # Determine Question Type
     is_dose_query = any(kw in q_lower for kw in ["dose", "concentration", "trend", "change with dose"])
@@ -379,10 +431,29 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
     ]) and not any(kw in q_lower for kw in ["significantly different", "vs control", "compared with control", "compared to control", "t-test", "anova", "hypothesis"])
     # A pairwise test needs an explicitly named treatment; never default to a guessed one.
     # Without a named drug, "significantly different overall" is a multi-group (ANOVA) question.
+    # When two groups are named, the second becomes the reference (A vs B, not A vs Control).
     is_pairwise = target_drug is not None and (
         any(kw in q_lower for kw in ["is drug", "significantly different", "vs control", "different from control"])
         or (not is_descriptive and not is_dose_query)
     )
+
+    # Unknown-group guard: a named group that isn't in the dataset is a
+    # clarification, never a silent rerun of a broader analysis.
+    _unknown = _unknown_group_mentions(state["user_question"], treatments)
+    if _unknown:
+        _names = ", ".join(f"'{u}'" for u in _unknown)
+        _available = ", ".join(treatments)
+        return {
+            "status": "complete",
+            "next_action": None,
+            "reason": (
+                f"I couldn't find {_names} in this dataset. "
+                f"The available groups are: {_available}. "
+                "Try asking about one of those."
+            ),
+            "supported": False,
+            "error_type": "unknown_group",
+        }
 
     # -------------------------------------------------------------------------
     # Workflow A: Filtered Dose Question (e.g. "How does Drug B respond to dose?")
@@ -534,16 +605,17 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
         val_col = "viability" if "viability" in num_cols else num_cols[0]
         grp_col = "treatment" if "treatment" in cat_cols else cat_cols[0]
         eff_target = target_drug
-        
+        eff_ref = ref_group
+
         if "check_assumptions" not in completed:
             return {
                 "status": "continue",
                 "next_action": {
                     "tool": "check_assumptions",
                     "arguments": {"group_column": grp_col, "value_column": val_col,
-                              "test_type": "two_sample_t_test", "ref_group": "Control", "target_group": eff_target}
+                              "test_type": "two_sample_t_test", "ref_group": eff_ref, "target_group": eff_target}
                 },
-                "reason": f"Verify sample sizes (n >= {MIN_N_PER_GROUP} per group), variance characteristics, and data adequacy for '{eff_target}' vs 'Control'.",
+                "reason": f"Verify sample sizes (n >= {MIN_N_PER_GROUP} per group), variance characteristics, and data adequacy for '{eff_target}' vs '{eff_ref}'.",
                 "supported": True
             }
         if "compare_groups" not in completed:
@@ -555,11 +627,11 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
                         "group_column": grp_col,
                         "value_column": val_col,
                         "test_type": "two_sample_t_test",
-                        "ref_group": "Control",
+                        "ref_group": eff_ref,
                         "target_group": eff_target
                     }
                 },
-                "reason": f"Perform Welch's two-sample t-test comparing {eff_target} specifically against Control.",
+                "reason": f"Perform Welch's two-sample t-test comparing {eff_target} specifically against {eff_ref}.",
                 "supported": True
             }
         if "create_visualization" not in completed:
@@ -573,7 +645,7 @@ def _deterministic_reasoner(state: Dict[str, Any], df: pd.DataFrame) -> Dict[str
                         "chart_type": "bar"
                     }
                 },
-                "reason": f"Generate bar plot comparing {eff_target} against Control with error bars.",
+                "reason": f"Generate bar plot comparing {eff_target} against {eff_ref} with error bars.",
                 "supported": True
             }
         return {

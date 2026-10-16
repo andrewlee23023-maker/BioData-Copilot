@@ -28,13 +28,61 @@ export default function ResultDeck({ result }) {
 
   const { stats, plotly_spec, interpretation } = result;
   const compType = stats?.comparison_type;
+  const isBlocked = Boolean(stats?.blocked);
   const isPairwise = compType === "pairwise" || stats?.test_name?.includes("t-test") || stats?.test_name?.includes("Mann-Whitney");
   const isDescriptive = compType === "descriptive";
   const isTrend = compType === "dose_trend" || stats?.test_name?.includes("Correlation") || stats?.test_name?.includes("Trend");
 
   return (
     <section className="animate-fade-in" style={{ marginBottom: '2.5rem' }}>
-      {/* High-Impact Stat Summary Card */}
+      {isBlocked ? (
+        /* Blocked analyses get a dedicated panel: no p-value, clear reasons,
+           descriptive statistics still shown. */
+        <div className="glass-panel" style={{ padding: '2rem', marginBottom: '1.75rem', borderColor: 'rgba(245, 158, 11, 0.45)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <AlertTriangle size={22} color="#f59e0b" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', color: '#f59e0b', textTransform: 'uppercase' }}>
+              Statistical test blocked
+            </span>
+          </div>
+
+          <h2 style={{ fontSize: '1.35rem', marginBottom: '0.75rem', color: '#fff' }}>
+            {stats.target_group || stats.top_performer} vs {stats.reference_group}: no test run
+          </h2>
+
+          <p style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '1rem' }}>
+            {stats.blocked_message || 'The requested test did not meet the requirements to run.'}
+          </p>
+
+          {(stats.blocked_reasons || []).length > 0 && (
+            <ul style={{ margin: '0 0 1.25rem 0', paddingLeft: '1.25rem', color: '#fcd34d', fontSize: '0.92rem', lineHeight: 1.6 }}>
+              {(stats.blocked_reasons || []).map((r, i) => (
+                <li key={i}>{r.message || r}</li>
+              ))}
+            </ul>
+          )}
+
+          {stats.group_summary && Object.keys(stats.group_summary).length > 0 && (
+            <div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.5rem' }}>
+                Descriptive statistics (unaffected by the block)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.85rem' }}>
+                {Object.entries(stats.group_summary).map(([group, s]) => (
+                  <div key={group} style={{ background: 'rgba(15, 23, 42, 0.75)', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.6)' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>{group}</div>
+                    <div className="num-tabular" style={{ fontSize: '1.4rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.15rem' }}>
+                      {s.mean ?? '-'}%
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>n = {s.n ?? '-'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+      /* High-Impact Stat Summary Card */
       <div className="glass-panel glass-panel-highlight" style={{ padding: '2rem', marginBottom: '1.75rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
           <Award size={22} color="#10b981" />
@@ -180,6 +228,7 @@ export default function ResultDeck({ result }) {
           )}
         </div>
       </div>
+      )}
 
       {/* Interactive Plotly Chart Canvas */}
       {plotly_spec && (
