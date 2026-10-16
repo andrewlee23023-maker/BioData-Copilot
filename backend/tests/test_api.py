@@ -248,3 +248,53 @@ def test_analyze_response_contains_trace_and_audit():
 def test_analyze_unknown_session_is_404():
     r = client.post("/api/analyze", json={"session_id": "nope", "question": "q"})
     assert r.status_code == 404
+
+
+# ===========================================================================
+# Planner routing fixes, question cap, and rate limiting (via API)
+# ===========================================================================
+
+def test_analyze_two_named_groups_via_api():
+    sid = client.post("/api/load-demo").json()["session_id"]
+    data = client.post("/api/analyze", json={
+        "session_id": sid, "question": "Compare Drug A and Drug B"}).json()
+    assert data["supported"] is True
+    assert data["statistical_audit"]["groups"] == ["Drug A", "Drug B"]
+    assert data["statistical_audit"]["selected_test"] == "Welch's Two-Sample t-test"
+
+
+def test_analyze_unknown_group_clarification_via_api():
+    sid = client.post("/api/load-demo").json()["session_id"]
+    data = client.post("/api/analyze", json={
+        "session_id": sid,
+        "question": "Is Drug Z significantly different from Control?"}).json()
+    assert data["supported"] is False
+    assert data["error_type"] == "unknown_group"
+    assert "Drug Z" in data["reason"]
+    assert "Control, Drug A, Drug B, Drug C" in data["reason"]
+
+
+def test_analyze_rejects_overlong_question():
+    sid = client.post("/api/load-demo").json()["session_id"]
+    r = client.post("/api/analyze", json={"session_id": sid, "question": "x" * 501})
+    assert r.status_code == 400
+    assert "too long" in r.json()["detail"]
+    # At the boundary it still works.
+    ok = client.post("/api/analyze", json={"session_id": sid, "question": "x" * 500})
+    assert ok.status_code == 200
+
+
+def test_analyze_rate_limit(monkeypatch):
+    monkeypatch.setattr(main, "RATE_LIMIT_MAX", 2)
+    monkeypatch.setattr(main, "RATE_LIMIT_WINDOW_SECONDS", 60)
+    main._rate_buckets.clear()
+    try:
+        sid = client.post("/api/load-demo").json()["session_id"]
+        payload = {"session_id": sid, "question": "Is Drug B significantly different from Control?"}
+        assert client.post("/api/analyze", json=payload).status_code == 200
+        assert client.post("/api/analyze", json=payload).status_code == 200
+        r = client.post("/api/analyze", json=payload)
+        assert r.status_code == 429
+        assert "Too many requests" in r.json()["detail"]
+    finally:
+        main._rate_buckets.clear()
