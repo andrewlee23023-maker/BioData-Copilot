@@ -353,3 +353,53 @@ def test_gemini_model_is_configured_in_one_place():
     src = open(agent.__file__, encoding="utf-8").read()
     assert len(re.findall(r"gemini-[0-9][\w.\-]*", src)) == 1      # only the default in GEMINI_MODEL
     assert agent.GEMINI_MODEL in agent.GEMINI_URL
+
+
+# ===========================================================================
+# Planner routing fixes: two-group comparisons and unknown-group clarification
+# ===========================================================================
+
+def test_pairwise_two_named_groups_compares_both(df):
+    """'Compare Drug A and Drug B' must compare A vs B, not A vs Control."""
+    r = run_agent_reasoning_loop(df, "Compare Drug A and Drug B")
+    audit = r["statistical_audit"]
+    assert r["supported"] is True
+    assert audit["groups"] == ["Drug A", "Drug B"]
+    assert audit["selected_test"] == "Welch's Two-Sample t-test"
+
+
+def test_pairwise_reversed_order_names_target_first(df):
+    """Question order decides target vs reference: 'Drug B vs Drug A' -> B vs A."""
+    r = run_agent_reasoning_loop(df, "Is Drug B different from Drug A?")
+    audit = r["statistical_audit"]
+    assert r["supported"] is True
+    assert audit["groups"] == ["Drug B", "Drug A"]
+
+
+def test_pairwise_single_named_group_defaults_to_control(df):
+    """One named group keeps the previous Control default."""
+    r = run_agent_reasoning_loop(df, "Is Drug B significantly different?")
+    audit = r["statistical_audit"]
+    assert r["supported"] is True
+    assert audit["groups"] == ["Drug B", "Control"]
+
+
+def test_unknown_group_returns_clarification(df):
+    """A nonexistent group is a clarification, not a silent ANOVA rerun."""
+    r = run_agent_reasoning_loop(df, "Is Drug Z significantly different from Control?")
+    assert r["supported"] is False
+    assert r["error_type"] == "unknown_group"
+    assert "Drug Z" in r["reason"]
+    assert "Control, Drug A, Drug B, Drug C" in r["reason"]
+
+
+def test_unknown_group_dose_question_returns_clarification(df):
+    r = run_agent_reasoning_loop(df, "How does Drug Z respond to dose?")
+    assert r["supported"] is False
+    assert r["error_type"] == "unknown_group"
+
+
+def test_generic_drug_mention_is_not_flagged(df):
+    """Prose like 'drug response mechanism' must not trigger the unknown-group guard."""
+    r = run_agent_reasoning_loop(df, "What is the drug response mechanism?")
+    assert r.get("error_type") != "unknown_group"
