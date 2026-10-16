@@ -9,7 +9,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from backend.tools.inspect import inspect_dataset
 from backend.tools.stats import summarize_groups, compare_groups
@@ -41,6 +41,35 @@ async def reject_oversized_uploads(request: Request, call_next):
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BYTES + _MULTIPART_OVERHEAD_BYTES:
             return JSONResponse(status_code=413, content={"detail": "File too large. Maximum upload size is 25 MB."})
+    return await call_next(request)
+
+
+# Abuse guard for the expensive endpoints: sliding-window per-IP request limit,
+# so a public deployment can't have its Gemini quota burned by one client.
+RATE_LIMIT_PATHS = {"/api/analyze", "/api/upload"}
+RATE_LIMIT_MAX = int(os.environ.get("RATE_LIMIT_MAX", "30"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60"))
+_rate_buckets: Dict[str, List[float]] = {}
+_rate_lock = threading.Lock()
+
+
+@app.middleware("http")
+async def rate_limit_expensive_endpoints(request: Request, call_next):
+    if request.url.path in RATE_LIMIT_PATHS:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        ip = forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+        now = time.time()
+        with _rate_lock:
+            bucket = [t for t in _rate_buckets.get(ip, []) if now - t < RATE_LIMIT_WINDOW_SECONDS]
+            if len(bucket) >= RATE_LIMIT_MAX:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many requests. Please wait a minute and try again."},
+                )
+            bucket.append(now)
+            _rate_buckets[ip] = bucket
+            if len(_rate_buckets) > 10000:  # bound memory under IP churn
+                _rate_buckets.clear()
     return await call_next(request)
 
 
@@ -98,6 +127,9 @@ class AnalyzeRequest(BaseModel):
     session_id: str
     question: str
 
+# Bound prompt-injection surface and per-request Gemini cost.
+MAX_QUESTION_CHARS = 500
+
 @app.get("/api/health")
 def health_check():
     return {
@@ -154,6 +186,11 @@ def get_dataset_info(session_id: str):
 
 @app.post("/api/analyze")
 def analyze_question(req: AnalyzeRequest):
+    if len(req.question) > MAX_QUESTION_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Question is too long ({len(req.question)} characters). Please keep it under {MAX_QUESTION_CHARS} characters.",
+        )
     df = _get_session_df(req.session_id, "Session expired or dataset not found. Please upload a dataset.")
     
     # Execute the reasoning-driven tool-using agent loop
